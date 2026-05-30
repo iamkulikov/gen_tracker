@@ -3,3 +3,7 @@
 .RData
 .Ruserdata
 data
+!data/event_countries.template.csv
+docs
+tests
+www
