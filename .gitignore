@@ -4,6 +4,12 @@
 .Ruserdata
 data
 !data/event_countries.template.csv
-docs
-tests
+!data/event_criteria.template.csv
+!data/composite_classifiers.template.csv
+!data/sources/indicators/README.md
+!data/indicators/README.md
 www
+AGENTS.md
+_archive/*
+!_archive/README.md
+debug*.log

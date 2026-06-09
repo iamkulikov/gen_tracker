@@ -8,6 +8,15 @@ queryBuilderDefaultCountryId <- function(countries, preferred = "RUS") {
   countries$country_id[[1]]
 }
 
+resolveQueryBuilderCountryId <- function(selected, countries, preferred = "RUS") {
+  if (!is.null(selected) && length(selected) == 1L && !is.na(selected) && nzchar(selected)) {
+    if (selected %in% countries$country_id) {
+      return(as.character(selected))
+    }
+  }
+  queryBuilderDefaultCountryId(countries, preferred = preferred)
+}
+
 queryBuilderInlineSelectInput <- function(
   inputId,
   choices,
@@ -19,7 +28,7 @@ queryBuilderInlineSelectInput <- function(
     choices = choices,
     selected = selected,
     selectize = FALSE,
-    width = "auto"
+    width = "100%"
   )
 }
 
@@ -31,21 +40,20 @@ queryBuilderEventSelectInput <- function(
   country_name = NULL,
   selected = NULL
 ) {
+  event_select_class <- "shiny-input-select form-control query-inline-select query-event-select"
+
   if (nrow(events_df) == 0) {
     return(htmltools::tags$select(
       id = inputId,
-      class = "query-inline-select query-event-select"
+      class = event_select_class
     ))
   }
 
-  is_primary <- vapply(seq_len(nrow(events_df)), function(i) {
-    isEventPrimaryForCountry(
-      event_id = events_df$event_id[[i]],
-      event_scope = events_df$event_scope[[i]],
-      country_id = country_id,
-      event_countries = event_countries
-    )
-  }, logical(1))
+  is_primary <- eventPrimaryFlagsForCountry(
+    events = events_df,
+    country_id = country_id,
+    event_countries = event_countries
+  )
 
   build_option <- function(i) {
     label <- formatEventChoiceLabel(
@@ -55,29 +63,16 @@ queryBuilderEventSelectInput <- function(
     )
     opt <- htmltools::tags$option(
       value = events_df$event_id[[i]],
-      label
+      label,
+      style = if (is_primary[[i]]) "font-weight:700" else NULL
     )
-    if (is_primary[[i]]) {
-      opt <- htmltools::tagAppendAttributes(opt, style = "font-weight:700")
-    }
     if (!is.null(selected) && identical(events_df$event_id[[i]], selected)) {
       opt <- htmltools::tagAppendAttributes(opt, selected = "selected")
     }
     opt
   }
 
-  is_primary <- vapply(seq_len(nrow(events_df)), function(i) {
-    isEventPrimaryForCountry(
-      event_id = events_df$event_id[[i]],
-      event_scope = events_df$event_scope[[i]],
-      country_id = country_id,
-      event_countries = event_countries
-    )
-  }, logical(1))
-
-  is_global <- vapply(events_df$event_scope, function(scope) {
-    identical(scope, "global")
-  }, logical(1))
+  is_global <- events_df$event_scope == "global"
 
   primary_idx <- which(is_primary)
   global_idx <- which(!is_primary & is_global)
@@ -88,27 +83,36 @@ queryBuilderEventSelectInput <- function(
   if (length(primary_idx) > 0) {
     children <- c(
       children,
-      list(htmltools::tags$optgroup(
-        label = sprintf("Events for %s", country_label),
-        lapply(primary_idx, build_option)
+      list(do.call(
+        htmltools::tags$optgroup,
+        c(
+          list(label = sprintf("Events for %s", country_label)),
+          lapply(primary_idx, build_option)
+        )
       ))
     )
   }
   if (length(global_idx) > 0) {
     children <- c(
       children,
-      list(htmltools::tags$optgroup(
-        label = "Global events",
-        lapply(global_idx, build_option)
+      list(do.call(
+        htmltools::tags$optgroup,
+        c(
+          list(label = "Global events"),
+          lapply(global_idx, build_option)
+        )
       ))
     )
   }
   if (length(other_idx) > 0) {
     children <- c(
       children,
-      list(htmltools::tags$optgroup(
-        label = "Other events",
-        lapply(other_idx, build_option)
+      list(do.call(
+        htmltools::tags$optgroup,
+        c(
+          list(label = "Other events"),
+          lapply(other_idx, build_option)
+        )
       ))
     )
   }
@@ -116,10 +120,12 @@ queryBuilderEventSelectInput <- function(
     children <- lapply(seq_len(nrow(events_df)), build_option)
   }
 
-  htmltools::tags$select(
-    id = inputId,
-    class = "query-inline-select query-event-select",
-    children
+  do.call(
+    htmltools::tags$select,
+    c(
+      list(id = inputId, class = event_select_class),
+      children
+    )
   )
 }
 
@@ -137,7 +143,7 @@ queryBuilderUi <- function(id, line_color = NULL) {
       style = card_style,
       shiny::div(
         class = "query-sentence",
-        shiny::span(class = "query-chunk", queryBuilderInlineSelectInput(
+        shiny::span(class = "query-chunk query-chunk-sex", queryBuilderInlineSelectInput(
           ns("sex"),
           choices = queryBuilderSexChoices(),
           selected = "all"
@@ -145,23 +151,22 @@ queryBuilderUi <- function(id, line_color = NULL) {
         shiny::span(class = "query-plain", "in"),
         shiny::span(class = "query-chunk query-chunk-country", shiny::uiOutput(ns("country_ui"), inline = TRUE)),
         shiny::span(class = "query-plain", "who were"),
+        shiny::span(class = "query-chunk query-chunk-complement", queryBuilderInlineSelectInput(
+          ns("age_modifier"),
+          choices = queryBuilderComplementChoices(),
+          selected = "none"
+        )),
         shiny::span(
           class = "query-chunk query-chunk-age",
-          shiny::uiOutput(ns("age_group_ui"), inline = TRUE),
+          shiny::uiOutput(ns("age_status_ui"), inline = TRUE),
           shiny::uiOutput(ns("custom_age_ui"), inline = TRUE)
         ),
-        shiny::span(class = "query-plain", "and"),
-        shiny::span(class = "query-chunk", queryBuilderInlineSelectInput(
-          ns("operator"),
-          choices = queryBuilderOperatorChoices(),
-          selected = "experienced"
-        )),
-        shiny::span(class = "query-chunk query-chunk-event", shiny::uiOutput(ns("event_ui"), inline = TRUE)),
-        shiny::span(class = "query-chunk", queryBuilderInlineSelectInput(
+        shiny::span(class = "query-chunk query-chunk-mode", queryBuilderInlineSelectInput(
           ns("event_mode"),
           choices = queryBuilderEventModeChoices(),
           selected = "start"
         )),
+        shiny::span(class = "query-chunk query-chunk-event", shiny::uiOutput(ns("event_ui"), inline = TRUE)),
         shiny::span(class = "query-plain query-sentence-end", ".")
       ),
       shiny::uiOutput(ns("validity_ui"))

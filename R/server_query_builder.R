@@ -1,26 +1,32 @@
 assembleQueryBuilderRecipe <- function(input, query_id, metric = "count") {
-  age_group_id <- input$age_group_id
-  custom_min <- if (identical(age_group_id, "custom")) {
+  age_status_id <- input$age_status_id
+  custom_min <- if (identical(age_status_id, "custom")) {
     as.integer(input$custom_age_min)
   } else {
     NA_integer_
   }
-  custom_max <- if (identical(age_group_id, "custom")) {
+  custom_max <- if (identical(age_status_id, "custom")) {
     as.integer(input$custom_age_max)
   } else {
     NA_integer_
   }
+  age_modifier <- as.character(input$age_modifier %||% input$is_complement %||% "none")
+  if (age_modifier %in% c("FALSE", "TRUE")) {
+    age_modifier <- if (identical(age_modifier, "TRUE")) "not" else "none"
+  }
+  is_complement <- identical(age_modifier, "not")
 
   list(
     query_id = query_id,
     country_id = input$country_id,
     sex = input$sex,
-    age_group_id = age_group_id,
+    age_status_id = age_status_id,
+    age_modifier = age_modifier,
+    is_complement = is_complement,
     custom_age_min = custom_min,
     custom_age_max = custom_max,
     event_id = input$event_id,
     event_mode = input$event_mode,
-    operator = input$operator,
     metric = metric
   )
 }
@@ -32,12 +38,27 @@ queryBuilderServer <- function(
   age_groups,
   event_countries,
   query_id,
-  metric = NULL
+  metric = NULL,
+  custom_age_seed = NULL,
+  render_outputs = NULL,
+  events_catalog = NULL
 ) {
   shiny::moduleServer(id, function(input, output, session) {
     metric_reactive <- metric
     if (is.null(metric_reactive)) {
       metric_reactive <- shiny::reactive("count")
+    }
+    custom_age_seed_reactive <- custom_age_seed
+    if (is.null(custom_age_seed_reactive)) {
+      custom_age_seed_reactive <- shiny::reactive(NULL)
+    }
+    render_outputs_reactive <- render_outputs
+    if (is.null(render_outputs_reactive)) {
+      render_outputs_reactive <- shiny::reactive(TRUE)
+    }
+    events_catalog_reactive <- events_catalog
+    if (is.null(events_catalog_reactive)) {
+      events_catalog_reactive <- events
     }
 
     inputs_ready <- shiny::reactive({
@@ -48,6 +69,10 @@ queryBuilderServer <- function(
       input$country_id
     })
 
+    effective_country_id <- shiny::reactive({
+      resolveQueryBuilderCountryId(selected_country(), countries())
+    })
+
     selected_event <- shiny::reactive({
       input$event_id
     })
@@ -55,7 +80,7 @@ queryBuilderServer <- function(
     compatible_events <- shiny::reactive({
       filterCompatibleEvents(
         events = events(),
-        country_id = selected_country(),
+        country_id = effective_country_id(),
         event_countries = event_countries()
       )
     })
@@ -70,6 +95,13 @@ queryBuilderServer <- function(
     })
 
     output$country_ui <- shiny::renderUI({
+      if (!render_outputs_reactive()) {
+        return(queryBuilderInlineSelectInput(
+          inputId = session$ns("country_id"),
+          choices = stats::setNames(countries()$country_id, countries()$country_name),
+          selected = queryBuilderDefaultCountryId(countries(), "RUS")
+        ))
+      }
       choices_df <- compatible_countries()
       if (nrow(choices_df) == 0) {
         choices_df <- countries()
@@ -90,57 +122,87 @@ queryBuilderServer <- function(
     })
 
     output$event_ui <- shiny::renderUI({
+      if (!render_outputs_reactive()) {
+        return(htmltools::tags$select(
+          id = session$ns("event_id"),
+          class = "shiny-input-select form-control query-inline-select query-event-select"
+        ))
+      }
+      countries_df <- countries()
+      country_id <- effective_country_id()
+      events_df <- events()
+
       choices_df <- compatible_events()
       if (nrow(choices_df) == 0) {
-        choices_df <- events()
+        choices_df <- events_df
       }
-      selected <- selected_event()
-      if (!is.null(selected) && selected %in% choices_df$event_id) {
-        selected_value <- selected
-      } else {
-        selected_value <- choices_df$event_id[[1]]
+      if (nrow(choices_df) == 0) {
+        return(htmltools::tags$select(
+          id = session$ns("event_id"),
+          class = "shiny-input-select form-control query-inline-select query-event-select"
+        ))
       }
 
-      country_row <- countries() |>
-        dplyr::filter(.data$country_id == selected_country()) |>
+      selected <- selected_event()
+      if (!is.null(selected) && length(selected) == 1L && selected %in% choices_df$event_id) {
+        selected_value <- selected
+      } else {
+        preset_event <- resolvePresetEventId(
+          candidates = c("RUS_AFGHAN_WAR", "AFG_WAR"),
+          country_id = country_id,
+          events = events_df
+        )
+        if (!is.null(preset_event) && preset_event %in% choices_df$event_id) {
+          selected_value <- preset_event
+        } else {
+          selected_value <- choices_df$event_id[[1]]
+        }
+      }
+
+      country_row <- countries_df |>
+        dplyr::filter(.data$country_id == .env$country_id) |>
         dplyr::slice(1)
       country_name <- if (nrow(country_row) > 0) {
         country_row$country_name[[1]]
       } else {
-        selected_country()
+        country_id
       }
 
       queryBuilderEventSelectInput(
         inputId = session$ns("event_id"),
         events_df = choices_df,
-        country_id = selected_country(),
+        country_id = country_id,
         event_countries = event_countries(),
         country_name = country_name,
         selected = selected_value
       )
     })
 
-    output$age_group_ui <- shiny::renderUI({
-      selected <- input$age_group_id
-      if (is.null(selected) || !selected %in% age_groups()$age_group_id) {
+    output$age_status_ui <- shiny::renderUI({
+      selected <- input$age_status_id
+      if (is.null(selected) || !selected %in% queryBuilderAgeStatusValues(age_groups())) {
         selected <- "adults"
       }
-
       queryBuilderInlineSelectInput(
-        inputId = session$ns("age_group_id"),
-        choices = stats::setNames(age_groups()$age_group_id, age_groups()$age_label),
+        inputId = session$ns("age_status_id"),
+        choices = queryBuilderAgeStatusChoices(age_groups()),
         selected = selected
       )
     })
 
     output$custom_age_ui <- shiny::renderUI({
-      selected_age <- input$age_group_id
+      selected_age <- input$age_status_id
       if (is.null(selected_age) || !identical(selected_age, "custom")) {
         return(NULL)
       }
 
+      seed <- custom_age_seed_reactive()
       min_val <- input$custom_age_min
       max_val <- input$custom_age_max
+      if (!is.null(seed) && length(seed) == 2L) {
+        min_val <- seed[[1]]
+        max_val <- seed[[2]]
+      }
       if (is.null(min_val) || is.na(min_val)) {
         min_val <- 18L
       }
@@ -176,6 +238,11 @@ queryBuilderServer <- function(
       )
     })
 
+    shiny::outputOptions(output, "country_ui", suspendWhenHidden = FALSE)
+    shiny::outputOptions(output, "event_ui", suspendWhenHidden = FALSE)
+    shiny::outputOptions(output, "age_status_ui", suspendWhenHidden = FALSE)
+    shiny::outputOptions(output, "custom_age_ui", suspendWhenHidden = FALSE)
+
     recipe <- shiny::reactive({
       assembleQueryBuilderRecipe(
         input = input,
@@ -197,7 +264,7 @@ queryBuilderServer <- function(
       state <- assessRecipe(
         recipe = recipe(),
         countries = countries(),
-        events = events(),
+        events = events_catalog_reactive(),
         age_groups = age_groups(),
         event_countries = event_countries()
       )
@@ -263,11 +330,11 @@ queryBuilderServer <- function(
 
 queryBuilderInputsReady <- function(input) {
   required_ids <- c(
-    "country_id", "sex", "age_group_id", "event_id",
-    "event_mode", "operator"
+    "country_id", "sex", "age_status_id", "age_modifier", "event_id",
+    "event_mode"
   )
 
-  if (identical(input$age_group_id, "custom")) {
+  if (identical(input$age_status_id, "custom")) {
     required_ids <- c(required_ids, "custom_age_min", "custom_age_max")
   }
 

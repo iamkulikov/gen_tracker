@@ -1,9 +1,5 @@
 populationCachePath <- function(data_dir = Sys.getenv("GEN_TRACKER_DATA_DIR", unset = "data")) {
-  env_path <- Sys.getenv("GEN_TRACKER_POPULATION_CACHE_PATH", unset = "")
-  if (nzchar(env_path)) {
-    return(env_path)
-  }
-  file.path(data_dir, "population_cache.rds")
+  resolvePopulationCachePath(data_dir)
 }
 
 populationSourcesAreFresh <- function(sources, cache_path) {

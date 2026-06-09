@@ -2,7 +2,11 @@ collectQueryWarnings <- function(
   recipe,
   event,
   country_row,
-  event_countries = NULL
+  event_countries = NULL,
+  stratum_series = NULL,
+  composite_members = NULL,
+  events = NULL,
+  migration = NULL
 ) {
   warnings <- character(0)
 
@@ -22,11 +26,45 @@ collectQueryWarnings <- function(
     warnings <- c(warnings, compat$message)
   }
 
+  if (!is.null(stratum_series)) {
+    growth_warning <- stratumGrowthWarning(
+      stratum_series,
+      recipe,
+      event,
+      composite_members = composite_members,
+      events = events
+    )
+    if (length(growth_warning) == 1L && nzchar(growth_warning)) {
+      warnings <- c(warnings, growth_warning)
+    }
+  }
+
+  reliability_implemented <- !is.null(migration)
+  if (reliability_implemented && !is.null(stratum_series)) {
+    reliability <- computeStratumReliability(
+      series = stratum_series,
+      recipe = recipe,
+      country_row = country_row,
+      event = event,
+      event_countries = event_countries,
+      migration = migration
+    )
+    score_line <- formatReliabilityScoreLine(reliability)
+    if (length(score_line) == 1L && nzchar(score_line)) {
+      warnings <- c(warnings, score_line)
+    }
+    if (!is.na(reliability$reliability_warning)) {
+      warnings <- c(warnings, reliability$reliability_warning)
+    }
+  }
+
   warnings <- c(
     warnings,
-    "Migration is not formally adjusted in MVP.",
-    "Reliability score is not yet implemented."
+    "Migration is not formally adjusted in MVP."
   )
+  if (!reliability_implemented) {
+    warnings <- c(warnings, "Reliability score is not yet implemented.")
+  }
 
   unique(warnings)
 }

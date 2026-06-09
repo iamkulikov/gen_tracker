@@ -5,7 +5,9 @@ buildPlotData <- function(
   age_groups,
   countries,
   event_countries = NULL,
-  plot_context = NULL
+  plot_context = NULL,
+  composite_members = NULL,
+  migration = NULL
 ) {
   recipes_tbl <- tibble::as_tibble(recipes)
   if (nrow(recipes_tbl) == 0) {
@@ -30,17 +32,26 @@ buildPlotData <- function(
       age_groups,
       countries,
       event_countries = event_countries,
-      plot_context = plot_context
+      plot_context = plot_context,
+      composite_members = composite_members
     )
 
     event <- events |> dplyr::filter(.data$event_id == recipe$event_id) |> dplyr::slice(1)
-    country_name <- countries |>
+    country_row <- countries |>
       dplyr::filter(.data$country_id == recipe$country_id) |>
-      dplyr::slice(1) |>
-      dplyr::pull(.data$country_name)
+      dplyr::slice(1)
+    country_name <- country_row |> dplyr::pull(.data$country_name)
     age_label <- resolveAgeRange(recipe, age_groups)$age_label
 
-    description <- buildRecipeDescription(
+    narrative <- buildChartNarrative(
+      recipe = recipe,
+      event = event,
+      countries = countries,
+      events = events,
+      age_groups = age_groups,
+      population = population
+    )
+    description <- buildRecipeDescriptionTechnical(
       recipe,
       event,
       country_name,
@@ -63,6 +74,29 @@ buildPlotData <- function(
       age_groups = age_groups
     )
 
+    growth_warning <- stratumGrowthWarning(
+      series,
+      recipe,
+      event,
+      composite_members = composite_members,
+      events = events
+    )
+    line_warning <- if (length(growth_warning) == 1L && nzchar(growth_warning)) {
+      growth_warning
+    } else {
+      NA_character_
+    }
+
+    reliability <- computeStratumReliability(
+      series = series,
+      recipe = recipe,
+      country_row = country_row,
+      event = event,
+      event_countries = event_countries,
+      countries = countries,
+      migration = migration
+    )
+
     series |>
       dplyr::mutate(
         legend_label = legend_text,
@@ -70,10 +104,14 @@ buildPlotData <- function(
         country_name = country_name,
         sex = recipe$sex,
         event_name = event$event_name,
+        event_mode = recipe$event_mode,
         recipe_code = recipe_code,
+        chart_narrative = narrative,
         query_description = description,
-        reliability_score = NA_real_,
-        warning = NA_character_
+        reliability_score = reliability$reliability_score,
+        migration_exposure = reliability$migration_exposure,
+        reliability_warning = reliability$reliability_warning,
+        warning = line_warning
       )
   })
 

@@ -110,13 +110,14 @@ missingPreparedPopulationHint <- function(data_dir = Sys.getenv("GEN_TRACKER_DAT
 }
 
 resolveWppSourcePaths <- function(data_dir = Sys.getenv("GEN_TRACKER_DATA_DIR", unset = "data")) {
+  search_dir <- resolveWppSourcesSearchDir(data_dir)
   paths <- sort(list.files(
-    data_dir,
+    search_dir,
     pattern = "^WPP2024_.*SINGLE_AGE.*\\.(xlsx|xls)$",
     full.names = TRUE
   ))
   if (length(paths) == 0) {
-    stop(sprintf("No WPP2024 single-age Excel files found in %s.", data_dir))
+    stop(sprintf("No WPP2024 single-age Excel files found in %s.", search_dir))
   }
 
   female <- paths[grepl("Female", paths, ignore.case = TRUE)]

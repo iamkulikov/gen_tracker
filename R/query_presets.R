@@ -51,10 +51,11 @@ demoQueryPresets <- function() {
           query_id = "q1",
           country_id = "RUS",
           sex = "male",
-          age_group_id = "school_age",
+          age_status_id = "school_age",
+          age_modifier = "none",
+          is_complement = FALSE,
           event_candidates = c("RUS_AFGHAN_WAR", "AFG_WAR"),
           event_mode = "start",
-          operator = "experienced",
           custom_age_min = 0L,
           custom_age_max = 100L
         )
@@ -69,10 +70,11 @@ demoQueryPresets <- function() {
           query_id = "q1",
           country_id = "RUS",
           sex = "all",
-          age_group_id = "school_age",
+          age_status_id = "school_age",
+          age_modifier = "none",
+          is_complement = FALSE,
           event_candidates = c("RUS_AFGHAN_WAR", "AFG_WAR"),
           event_mode = "start",
-          operator = "experienced",
           custom_age_min = 0L,
           custom_age_max = 100L
         )
@@ -87,10 +89,11 @@ demoQueryPresets <- function() {
           query_id = "q1",
           country_id = "RUS",
           sex = "male",
-          age_group_id = "school_age",
+          age_status_id = "school_age",
+          age_modifier = "none",
+          is_complement = FALSE,
           event_candidates = c("RUS_AFGHAN_WAR", "AFG_WAR"),
           event_mode = "start",
-          operator = "experienced",
           custom_age_min = 0L,
           custom_age_max = 100L
         ),
@@ -98,10 +101,11 @@ demoQueryPresets <- function() {
           query_id = "q2",
           country_id = "RUS",
           sex = "female",
-          age_group_id = "school_age",
+          age_status_id = "school_age",
+          age_modifier = "none",
+          is_complement = FALSE,
           event_candidates = c("RUS_AFGHAN_WAR", "AFG_WAR"),
           event_mode = "start",
-          operator = "experienced",
           custom_age_min = 0L,
           custom_age_max = 100L
         )
@@ -139,10 +143,11 @@ defaultQueryRecipe <- function(
     query_id = query_id,
     country_id = country_id,
     sex = "all",
-    age_group_id = "adults",
+    age_status_id = "adults",
+    age_modifier = "none",
+    is_complement = FALSE,
     event_id = event_id,
     event_mode = "start",
-    operator = "experienced",
     custom_age_min = NA_integer_,
     custom_age_max = NA_integer_
   )
@@ -160,10 +165,14 @@ applyQueryBuilderInputs <- function(session, module_prefix, recipe, events, coun
   shiny::updateSelectInput(session, paste0(module_prefix, "-country_id"), selected = country_id)
   shiny::updateSelectInput(
     session,
-    paste0(module_prefix, "-age_group_id"),
-    selected = recipe$age_group_id
+    paste0(module_prefix, "-age_status_id"),
+    selected = recipe$age_status_id
   )
-  shiny::updateSelectInput(session, paste0(module_prefix, "-operator"), selected = recipe$operator)
+  shiny::updateSelectInput(
+    session,
+    paste0(module_prefix, "-age_modifier"),
+    selected = recipeAgeModifier(recipe)
+  )
   shiny::updateSelectInput(session, paste0(module_prefix, "-event_id"), selected = event_id)
   shiny::updateSelectInput(session, paste0(module_prefix, "-event_mode"), selected = recipe$event_mode)
   shiny::updateNumericInput(
@@ -201,11 +210,8 @@ applyDemoQueryPreset <- function(session, preset_id, events, countries) {
   invisible(TRUE)
 }
 
-resetDemoQueries <- function(session, events, countries) {
-  shiny::updateSliderInput(session, "query_count", value = 1L)
+seedSessionDefaultQueries <- function(session, events, countries) {
   shiny::updateSelectInput(session, "metric", selected = "count")
-  shiny::updateSelectInput(session, "demo_preset", selected = "blank")
-
   applyQueryBuilderInputs(
     session = session,
     module_prefix = "qb1",
@@ -215,6 +221,10 @@ resetDemoQueries <- function(session, events, countries) {
   )
 
   invisible(TRUE)
+}
+
+resetDemoQueries <- function(session, events, countries) {
+  seedSessionDefaultQueries(session, events, countries)
 }
 
 populationYearBounds <- function(population) {
@@ -230,4 +240,23 @@ populationYearBounds <- function(population) {
     estimate_max = estimate_max,
     default_range = c(yr_min, yr_max)
   )
+}
+
+# Left edge of the default view window: the decade (year ending in 0) before the
+# earliest event among the supplied start years, clamped to the available
+# population year range. When the earliest event lands exactly on a decade
+# boundary we step back a further decade so the marker keeps some lead-in buffer.
+# Falls back to year_min when no events apply.
+eventWindowDefaultStart <- function(event_start_years, year_min, year_max) {
+  starts <- suppressWarnings(as.integer(event_start_years))
+  starts <- starts[is.finite(starts)]
+  if (length(starts) == 0) {
+    return(as.integer(year_min))
+  }
+  earliest <- min(starts)
+  decade <- as.integer(floor(earliest / 10) * 10)
+  if (earliest == decade) {
+    decade <- decade - 10L
+  }
+  as.integer(max(as.integer(year_min), min(decade, as.integer(year_max))))
 }

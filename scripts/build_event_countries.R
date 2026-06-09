@@ -1,10 +1,5 @@
 #!/usr/bin/env Rscript
-# Build data/event_countries.csv from data/events.csv and data/countries.csv.
-#
-# Rules (see docs/dev_plan.md §4.3):
-# - national: at least one link to the country implied by the event_id prefix
-# - multi_country: primary prefix country plus known counterpart countries
-# - global: no links required
+# Build manual event-country links and merge deploy event_countries.csv (variant C).
 
 suppressPackageStartupMessages({
   library(readr)
@@ -15,10 +10,12 @@ suppressPackageStartupMessages({
 
 source(file.path("R", "project_root.R"))
 setwd(resolveProjectRoot())
+loadProjectSources()
 
-events_path <- file.path("data", "events.csv")
-countries_path <- file.path("data", "countries.csv")
-output_path <- file.path("data", "event_countries.csv")
+data_dir <- Sys.getenv("GEN_TRACKER_DATA_DIR", unset = "data")
+events_path <- resolveEventDataPath("events.csv", data_dir)
+countries_path <- resolveEventDataPath("countries.csv", data_dir)
+manual_layer_path <- eventCountriesManualLayerPath(data_dir)
 
 if (!file.exists(events_path)) {
   stop("Missing ", events_path, ". Place events.csv in data/ before running this script.")
@@ -405,13 +402,13 @@ if (length(orphan_links) > 0) {
   stop("Links reference unknown event_id values.")
 }
 
-dir.create(dirname(output_path), recursive = TRUE, showWarnings = FALSE)
-write_csv(event_countries, output_path)
+writeEventCountryLayer(event_countries, manual_layer_path)
+merged <- mergeDeployEventLinks(data_dir = data_dir, manual_links = event_countries)
 
 message(sprintf(
-  "Wrote %s rows to %s (%d national, %d multi_country links).",
+  "Wrote %s manual rows to %s; merged deploy file %s (%d rows total).",
   nrow(event_countries),
-  output_path,
-  nrow(national_links),
-  nrow(multi_links)
+  manual_layer_path,
+  merged$deploy_path,
+  nrow(merged$links)
 ))

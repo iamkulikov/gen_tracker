@@ -1,11 +1,25 @@
 formatMetricLabel <- function(metric) {
   if (metric == "count") {
+    if (isTRUE(populationCountStoredInThousands())) {
+      return("People, thousands")
+    }
     return("Population count")
   }
   if (metric == "share_total_population") {
     return("Share of total population")
   }
+  if (metric == "share_working_age_population") {
+    return("Share of working-age population")
+  }
   metric
+}
+
+isShareMetric <- function(metric) {
+  metric %in% c("share_total_population", "share_working_age_population")
+}
+
+populationCountStoredInThousands <- function() {
+  TRUE
 }
 
 formatEventYearRange <- function(start_year, end_year) {
@@ -45,6 +59,9 @@ formatBirthYearRange <- function(birth_years) {
 }
 
 formatAgeRangeDetail <- function(age_range) {
+  if (is.na(age_range$age_min) && is.na(age_range$age_max)) {
+    return(age_range$age_label)
+  }
   if (is.na(age_range$age_max)) {
     return(sprintf("%s (%s+)", age_range$age_label, age_range$age_min))
   }

@@ -7,7 +7,11 @@ suppressPackageStartupMessages({
   library(tidyr)
 })
 
-r_files <- list.files("R", pattern = "\\.R$", full.names = TRUE)
+r_files <- unique(normalizePath(
+  list.files("R", pattern = "\\.R$", full.names = TRUE),
+  winslash = "/",
+  mustWork = TRUE
+))
 invisible(lapply(r_files, source))
 
 resolveOptionalPath <- function(env_name, fallback_path) {
@@ -44,12 +48,18 @@ bootstrapAppData <- function() {
   message("Generation Tracker: loading population...")
   population <- loadPopulationData(population_paths)
   message("Generation Tracker: loading events and country dictionaries...")
-  events <- loadEvents(events_path)
+  data_dir <- dirname(events_path)
+  universe <- loadEventsUniverse(manual_path = events_path, data_dir = data_dir)
+  events <- universe$events
+  composite_members <- universe$composite_members
   countries <- loadCountryDictionary(countries_path)
 
   event_countries_loaded <- file.exists(event_countries_path)
   if (event_countries_loaded) {
-    event_countries <- loadEventCountries(event_countries_path)
+    event_countries <- loadEventCountriesUniverse(
+      manual_path = event_countries_path,
+      data_dir = data_dir
+    )
     message(
       "Generation Tracker: loaded ",
       nrow(event_countries),
@@ -76,14 +86,31 @@ bootstrapAppData <- function() {
   }
 
   validateEvents(events, countries = countries, event_countries = event_countries)
+  validateCompositeMembers(events, composite_members)
+
+  migration_path <- resolveOptionalPath("GEN_TRACKER_MIGRATION_PATH", preparedMigrationPath(data_dir))
+  migration <- loadPreparedMigration(migration_path, required = FALSE)
+  if (is.null(migration)) {
+    message(
+      "Generation Tracker: prepared migration not found at ", migration_path,
+      "; reliability scoring disabled (build offline: Rscript scripts/build_prepared_migration.R)."
+    )
+  } else {
+    message(
+      "Generation Tracker: loaded migration series for ",
+      length(unique(migration$migration$country_id)), " countries."
+    )
+  }
 
   year_bounds <- populationYearBounds(population)
 
   list(
     population = population,
     events = events,
+    composite_members = composite_members,
     countries = countries,
     event_countries = event_countries,
+    migration = migration,
     meta = list(
       population_paths = population_paths,
       events_path = events_path,
@@ -91,6 +118,8 @@ bootstrapAppData <- function() {
       event_countries_path = event_countries_path,
       event_countries_loaded = event_countries_loaded,
       event_countries_rows = nrow(event_countries),
+      migration_path = migration_path,
+      migration_loaded = !is.null(migration),
       year_bounds = year_bounds
     )
   )
@@ -103,14 +132,25 @@ message("Generation Tracker: data ready. Starting Shiny.")
 metricInputChoices <- function() {
   c(
     "Population count" = "count",
-    "Share of population" = "share_total_population"
+    "Share of population" = "share_total_population",
+    "Share of working-age population" = "share_working_age_population"
   )
 }
 
+staticAssetUrl <- function(path, base_dir = "www") {
+  full_path <- file.path(base_dir, path)
+  version <- if (file.exists(full_path)) {
+    as.integer(as.numeric(file.mtime(full_path)))
+  } else {
+    as.integer(as.numeric(Sys.time()))
+  }
+  sprintf("%s?v=%d", path, version)
+}
+
 ui <- fluidPage(
-  tags$head(
-    tags$link(rel = "stylesheet", type = "text/css", href = "styles.css"),
-    tags$script(src = "query_inline.js")
+  htmltools::tags$head(
+    htmltools::tags$link(rel = "stylesheet", type = "text/css", href = staticAssetUrl("styles.css")),
+    htmltools::tags$script(src = staticAssetUrl("query_inline.js"))
   ),
   div(
     class = "gt-header",
@@ -121,7 +161,9 @@ ui <- fluidPage(
     class = "gt-page",
     div(
       class = "gt-card gt-queries-panel",
+      uiOutput("query_layout_css"),
       uiOutput("query_ui"),
+      recipePackPanelUi(),
       p(
         class = "gt-queries-hint",
         "Tap any highlighted phrase to change it — the sentence is the query."
@@ -200,10 +242,13 @@ ui <- fluidPage(
 server <- function(input, output, session) {
   population <- reactiveVal(app_data$population)
   events <- reactiveVal(app_data$events)
+  events_picker <- reactiveVal(eventsForEventPicker(app_data$events))
+  composite_members <- reactiveVal(app_data$composite_members)
   countries <- reactiveVal(app_data$countries)
   event_countries <- reactiveVal(app_data$event_countries)
+  migration <- reactiveVal(app_data$migration)
   age_groups <- reactiveVal(defaultAgeGroups())
-  query_count <- reactiveVal(1L)
+  active_query_slots <- reactiveVal(1L)
   plot_context <- reactive({
     buildPlotCalculationContext(population())
   })
@@ -211,144 +256,224 @@ server <- function(input, output, session) {
   bootstrap_meta <- app_data$meta
 
   output$data_sources_ui <- renderUI({
-    pop_label <- if (length(bootstrap_meta$population_paths) == 1L) {
-      basename(bootstrap_meta$population_paths[[1]])
-    } else {
-      sprintf("%d population sources", length(bootstrap_meta$population_paths))
-    }
-
-    links_status <- if (isTRUE(bootstrap_meta$event_countries_loaded)) {
-      sprintf(
-        "%s event–country links loaded",
-        format(bootstrap_meta$event_countries_rows, big.mark = ",")
-      )
-    } else {
-      tagList(
-        span(class = "gt-data-warning", "Event links not loaded"),
-        tags$small(
-          class = "gt-data-muted",
-          " — run ",
-          tags$code("Rscript scripts/build_event_countries.R"),
-          " or set ",
-          tags$code("GEN_TRACKER_EVENT_COUNTRIES_PATH")
-        )
-      )
-    }
-
-    year_min <- as.integer(input$year_range[[1]])
-    year_max <- as.integer(input$year_range[[2]])
-    projection_label <- if (isTRUE(input$show_projection)) {
-      "projection shown"
-    } else {
-      "estimates only"
-    }
-
-    tagList(
-      div(
-        class = "gt-data-grid",
-        div(
-          class = "gt-data-grid-item",
-          div(class = "gt-data-grid-label", "Population"),
-          div(class = "gt-data-grid-value", pop_label)
-        ),
-        div(
-          class = "gt-data-grid-item",
-          div(class = "gt-data-grid-label", "Events / countries"),
-          div(
-            class = "gt-data-grid-value",
-            sprintf(
-              "%s / %s rows",
-              format(nrow(events()), big.mark = ","),
-              format(nrow(countries()), big.mark = ",")
-            )
-          )
-        ),
-        div(
-          class = "gt-data-grid-item",
-          div(class = "gt-data-grid-label", "Event links"),
-          div(class = "gt-data-grid-value", links_status)
-        ),
-        div(
-          class = "gt-data-grid-item",
-          div(class = "gt-data-grid-label", "Catalogues"),
-          div(
-            class = "gt-data-grid-value",
-            sprintf(
-              "%s · %s",
-              basename(bootstrap_meta$events_path),
-              basename(bootstrap_meta$countries_path)
-            )
-          )
-        ),
-        div(
-          class = "gt-data-grid-item",
-          div(class = "gt-data-grid-label", "Available years"),
-          div(
-            class = "gt-data-grid-value",
-            sprintf(
-              "%s–%s (estimates through %s)",
-              bootstrap_meta$year_bounds$min,
-              bootstrap_meta$year_bounds$max,
-              bootstrap_meta$year_bounds$estimate_max
-            )
-          )
-        ),
-        div(
-          class = "gt-data-grid-item",
-          div(class = "gt-data-grid-label", "Chart window"),
-          div(
-            class = "gt-data-grid-value",
-            sprintf("%s–%s · %s", year_min, year_max, projection_label)
-          )
-        )
-      )
+    buildDataSourcesUi(
+      year_bounds = bootstrap_meta$year_bounds,
+      n_countries = nrow(countries()),
+      n_events = nrow(events())
     )
   })
 
-  query_reactives <- list(
-    queryBuilderServer("qb1", countries, events, age_groups, event_countries, "q1", metric = metric),
-    queryBuilderServer("qb2", countries, events, age_groups, event_countries, "q2", metric = metric),
-    queryBuilderServer("qb3", countries, events, age_groups, event_countries, "q3", metric = metric),
-    queryBuilderServer("qb4", countries, events, age_groups, event_countries, "q4", metric = metric)
-  )
+  import_custom_ages <- reactiveVal(NULL)
+
+  query_reactives <- lapply(seq_len(4L), function(slot) {
+    queryBuilderServer(
+      paste0("qb", slot),
+      countries,
+      events_picker,
+      age_groups,
+      event_countries,
+      events_catalog = events,
+      paste0("q", slot),
+      metric = metric,
+      custom_age_seed = reactive({
+        ca <- import_custom_ages()
+        if (is.null(ca)) {
+          return(NULL)
+        }
+        ca[[as.character(slot)]]
+      }),
+      render_outputs = reactive({
+        slot %in% active_query_slots()
+      })
+    )
+  })
+
+  query_defaults_seeded <- FALSE
+  session$onFlushed(function() {
+    if (isTRUE(query_defaults_seeded)) {
+      return()
+    }
+    query_defaults_seeded <<- TRUE
+    seedSessionDefaultQueries(
+      session = session,
+      events = app_data$events,
+      countries = app_data$countries
+    )
+  })
 
   observeEvent(input$add_query, {
-    if (query_count() < 4L) {
-      query_count(query_count() + 1L)
+    active <- active_query_slots()
+    if (length(active) >= 4L) {
+      return()
     }
+    next_slot <- setdiff(seq_len(4L), active)[1]
+    active_query_slots(c(active, next_slot))
+  })
+
+  remove_query_slot <- function(slot) {
+    active <- active_query_slots()
+    if (length(active) <= 1L || !slot %in% active) {
+      return()
+    }
+    active_query_slots(setdiff(active, slot))
+  }
+
+  for (slot in seq_len(4L)) {
+    local({
+      slot_id <- slot
+      observeEvent(
+        input[[paste0("remove_query_", slot_id)]],
+        remove_query_slot(slot_id),
+        ignoreInit = TRUE
+      )
+    })
+  }
+
+  recipe_pack_status <- reactiveVal("")
+
+  output$recipe_pack_status <- renderText({
+    recipe_pack_status()
+  })
+
+  observeEvent(input$export_recipe_pack, {
+    view_state <- list(
+      metric = metric(),
+      year_range = input$year_range,
+      show_projection = isTRUE(input$show_projection)
+    )
+    code <- tryCatch(
+      buildRecipePackCodeFromStates(query_states_raw(), view_state),
+      error = function(e) {
+        recipe_pack_status(conditionMessage(e))
+        return(NULL)
+      }
+    )
+    if (is.null(code)) {
+      return()
+    }
+    updateTextAreaInput(session, "recipe_pack_code", value = code)
+    recipe_pack_status("Recipe pack copied to the field above.")
+  })
+
+  observeEvent(input$import_recipe_pack, {
+    code <- trimws(input$recipe_pack_code %||% "")
+    if (!nzchar(code)) {
+      recipe_pack_status("Paste a GENPACK1 code before importing.")
+      return()
+    }
+
+    assessment <- validateRecipePack(
+      code = code,
+      countries = countries(),
+      events = events(),
+      age_groups = age_groups(),
+      event_countries = event_countries(),
+      year_bounds = bootstrap_meta$year_bounds
+    )
+
+    if (!assessment$valid) {
+      recipe_pack_status(paste(assessment$errors, collapse = " "))
+      return()
+    }
+
+    import_custom_ages(recipePackCustomAgeSeeds(assessment$pack$recipes))
+
+    imported <- tryCatch(
+      {
+        applyRecipePackToSession(
+          session = session,
+          pack = assessment$pack,
+          set_active_slots = active_query_slots,
+          year_bounds = bootstrap_meta$year_bounds
+        )
+        TRUE
+      },
+      error = function(e) {
+        recipe_pack_status(conditionMessage(e))
+        FALSE
+      }
+    )
+    if (!isTRUE(imported)) {
+      return()
+    }
+
+    status <- "Recipe pack imported into the query lines above."
+    if (length(assessment$warnings) > 0) {
+      status <- paste(c(status, assessment$warnings), collapse = " ")
+    }
+    recipe_pack_status(status)
+  })
+
+  output$query_layout_css <- renderUI({
+    active <- active_query_slots()
+    hidden <- setdiff(seq_len(4L), active)
+    rules <- character(0)
+    if (length(hidden) > 0L) {
+      rules <- c(rules, sprintf(
+        "%s { display: none; }",
+        paste(sprintf("#gt-query-row-%d", hidden), collapse = ", ")
+      ))
+    }
+    if (length(active) <= 1L) {
+      rules <- c(rules, ".gt-query-row .gt-query-row-actions { display: none; }")
+    }
+    if (length(active) >= 4L) {
+      rules <- c(rules, "#gt-add-query-row { display: none; }")
+    }
+    if (length(rules) == 0L) {
+      return(NULL)
+    }
+    htmltools::tags$style(htmltools::HTML(paste(rules, collapse = "\n")))
   })
 
   output$query_ui <- renderUI({
-    n <- query_count()
     line_colors <- trackerPlotPalette(4L)
     tagList(
-      lapply(seq_len(n), function(i) {
-        queryBuilderUi(paste0("qb", i), line_color = line_colors[[i]])
-      }),
-      if (n < 4L) {
+      lapply(seq_len(4L), function(slot) {
+        row_style <- sprintf("--gt-query-color: %s;", line_colors[[slot]])
         div(
-          class = "gt-add-query-row",
-          actionButton(
-            "add_query",
-            label = "+",
-            class = "gt-add-query-btn",
-            title = "Add another query"
+          id = paste0("gt-query-row-", slot),
+          class = "gt-query-row",
+          style = row_style,
+          queryBuilderUi(paste0("qb", slot), line_color = line_colors[[slot]]),
+          div(
+            class = "gt-query-row-actions",
+            actionButton(
+              paste0("remove_query_", slot),
+              label = "\u00d7",
+              class = "gt-remove-query-btn",
+              title = "Remove this query"
+            )
           )
         )
-      }
+      }),
+      div(
+        id = "gt-add-query-row",
+        class = "gt-add-query-row",
+        actionButton(
+          "add_query",
+          label = "+",
+          class = "gt-add-query-btn",
+          title = "Add another query"
+        )
+      )
     )
   })
 
-  query_states <- reactive({
-    n <- query_count()
-    purrr::map(seq_len(n), function(i) query_reactives[[i]]())
+  query_states_raw <- reactive({
+    purrr::map(active_query_slots(), function(i) query_reactives[[i]]())
   })
+  query_states <- shiny::debounce(query_states_raw, millis = 220)
 
   recipes <- reactive({
     states <- query_states()
-    purrr::map_dfr(states, function(state) {
-      tibble::as_tibble(state$recipe)
+    ready <- purrr::keep(states, function(state) {
+      !isTRUE(state$pending) && !is.null(state$recipe$event_id)
     })
+    if (length(ready) == 0) {
+      return(tibble::tibble())
+    }
+    purrr::map_dfr(ready, function(state) tibble::as_tibble(state$recipe))
   })
 
   valid_recipes <- reactive({
@@ -360,6 +485,33 @@ server <- function(input, output, session) {
     purrr::map_dfr(valid, function(state) tibble::as_tibble(state$recipe))
   })
 
+  event_window_start <- reactive({
+    recipes <- valid_recipes()
+    if (nrow(recipes) == 0) {
+      return(NULL)
+    }
+    ev <- events()
+    start_years <- ev$start_year[ev$event_id %in% recipes$event_id]
+    if (length(start_years) == 0) {
+      return(NULL)
+    }
+    eventWindowDefaultStart(
+      event_start_years = start_years,
+      year_min = bootstrap_meta$year_bounds$min,
+      year_max = bootstrap_meta$year_bounds$max
+    )
+  })
+
+  observeEvent(event_window_start(), {
+    new_start <- event_window_start()
+    req(!is.null(new_start))
+    current <- input$year_range
+    upper <- if (!is.null(current)) current[[2]] else bootstrap_meta$year_bounds$max
+    if (is.null(current) || current[[1]] != new_start) {
+      updateSliderInput(session, "year_range", value = c(new_start, upper))
+    }
+  })
+
   plot_data <- reactive({
     req(nrow(valid_recipes()) > 0)
     out <- buildPlotData(
@@ -369,7 +521,9 @@ server <- function(input, output, session) {
       age_groups = age_groups(),
       countries = countries(),
       event_countries = event_countries(),
-      plot_context = plot_context()
+      plot_context = plot_context(),
+      composite_members = composite_members(),
+      migration = migration()
     )
     applyPlotViewFilters(
       plot_data = out,
@@ -390,13 +544,10 @@ server <- function(input, output, session) {
     buildTrackerPlot(
       plot_data = plot_data(),
       events = events(),
+      composite_members = composite_members(),
       metric = input$metric,
       title = NULL,
-      subtitle = buildPlotViewSubtitle(
-        metric = input$metric,
-        year_range = input$year_range,
-        show_projection = isTRUE(input$show_projection)
-      )
+      subtitle = NULL
     )
   })
 
@@ -413,8 +564,8 @@ server <- function(input, output, session) {
     })
     div(
       class = "alert alert-warning gt-status-alert",
-      tags$strong("Some queries are incomplete or incompatible:"),
-      tags$ul(lapply(msgs, tags$li))
+      htmltools::tags$strong("Some queries are incomplete or incompatible:"),
+      htmltools::tags$ul(lapply(msgs, htmltools::tags$li))
     )
   })
 
@@ -432,13 +583,32 @@ server <- function(input, output, session) {
     query_nums <- sub("^q", "", rows$query_id)
 
     tagList(lapply(seq_len(nrow(rows)), function(i) {
+      narrative <- rows$chart_narrative[[i]]
+      if (is.na(narrative) || !nzchar(narrative)) {
+        narrative <- rows$query_description[[i]]
+      }
+      narrative_paragraphs <- strsplit(narrative, "\n\n", fixed = TRUE)[[1]]
+
       div(
         class = "gt-query-detail",
         div(class = "gt-query-detail-title", sprintf("Line %s", query_nums[[i]])),
-        div(class = "gt-query-detail-sentence", rows$query_description[[i]]),
-        tags$details(
+      div(
+        class = "gt-query-detail-sentence",
+        lapply(narrative_paragraphs, function(paragraph) {
+          htmltools::tags$p(paragraph)
+        }),
+        htmltools::tags$p(
+          class = "gt-reliability-summary",
+          formatReliabilitySummary(list(
+            reliability_score = rows$reliability_score[[i]] %||% NA_real_,
+            migration_exposure = rows$migration_exposure[[i]] %||% NA_real_,
+            reliability_warning = rows$reliability_warning[[i]] %||% NA_character_
+          ))
+        )
+      ),
+        htmltools::tags$details(
           class = "query-advanced-block",
-          tags$summary("Recipe code"),
+          htmltools::tags$summary("Recipe code"),
           div(class = "gt-recipe-code", rows$recipe_code[[i]])
         )
       )
@@ -446,12 +616,24 @@ server <- function(input, output, session) {
   })
 
   output$warnings_ui <- renderUI({
-    req(nrow(recipes()) > 0)
-    warning_lines <- purrr::map_chr(seq_len(nrow(recipes())), function(i) {
-      recipe <- as.list(recipes()[i, ])
+    recipes_tbl <- valid_recipes()
+    req(nrow(recipes_tbl) > 0)
+    pdata <- plot_data()
+    warning_lines <- purrr::map_chr(seq_len(nrow(recipes_tbl)), function(i) {
+      recipe <- as.list(recipes_tbl[i, ])
       event <- events() |> filter(event_id == recipe$event_id) |> slice(1)
       ctry <- countries() |> filter(country_id == recipe$country_id) |> slice(1)
-      w <- collectQueryWarnings(recipe, event, ctry, event_countries = event_countries())
+      series_rows <- pdata |> dplyr::filter(.data$query_id == recipe$query_id)
+      w <- collectQueryWarnings(
+        recipe,
+        event,
+        ctry,
+        event_countries = event_countries(),
+        stratum_series = series_rows,
+        composite_members = composite_members(),
+        events = events(),
+        migration = migration()
+      )
       paste(sprintf("%s: %s", recipe$query_id, paste(w, collapse = " | ")), collapse = "\n")
     })
     div(class = "gt-warnings-box", paste(warning_lines, collapse = "\n\n"))
@@ -474,7 +656,9 @@ server <- function(input, output, session) {
         event_countries_path = bootstrap_meta$event_countries_path,
         event_countries = event_countries(),
         event_countries_loaded = bootstrap_meta$event_countries_loaded,
-        event_countries_rows = bootstrap_meta$event_countries_rows
+        event_countries_rows = bootstrap_meta$event_countries_rows,
+        composite_members = composite_members(),
+        migration = migration()
       )
       exportXlsx(
         plot_data = plot_data(),

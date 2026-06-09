@@ -1,9 +1,23 @@
 trackerPlotPalette <- function(n = 4) {
-  colors <- c("#1f4e79", "#c55a11", "#2e7d32", "#7b1fa2")
+  # Blue, vermillion, green, gold — distinguishable for common color-vision deficiencies.
+  colors <- c("#1f4e79", "#c55a11", "#2e7d32", "#9a6700")
   if (n <= length(colors)) {
     return(colors[seq_len(n)])
   }
   grDevices::colorRampPalette(colors)(n)
+}
+
+querySlotIndex <- function(query_id) {
+  slot <- suppressWarnings(as.integer(sub("^q", "", query_id)))
+  slot[!is.finite(slot) | slot < 1L] <- 1L
+  slot
+}
+
+queryLineColors <- function(query_ids, max_slots = 4L) {
+  palette <- trackerPlotPalette(max_slots)
+  slots <- vapply(query_ids, querySlotIndex, integer(1))
+  slots <- pmin(slots, max_slots)
+  palette[slots]
 }
 
 trackerPlotTheme <- function(base_size = 13) {
@@ -113,49 +127,246 @@ countAxisLabelFormatter <- function(values) {
   }
 }
 
-buildPlotEventMarkers <- function(plot_data, events) {
+shareScalePinsToUnity <- function(values) {
+  vals <- values[is.finite(values)]
+  if (length(vals) == 0L) {
+    return(FALSE)
+  }
+  max(vals, na.rm = TRUE) >= 0.98
+}
+
+shareYScaleExpansion <- function(has_markers, pin_top) {
+  if (pin_top) {
+    return(ggplot2::expansion(mult = c(0.02, 0)))
+  }
+  if (has_markers) {
+    return(ggplot2::expansion(mult = c(0.02, 0.2)))
+  }
+  ggplot2::expansion(mult = c(0.02, 0.06))
+}
+
+buildShareYScale <- function(values, has_markers = FALSE) {
+  pin_top <- shareScalePinsToUnity(values)
+  expand <- shareYScaleExpansion(has_markers, pin_top)
+  if (pin_top) {
+    return(ggplot2::scale_y_continuous(
+      labels = shareAxisLabelFormatter(values),
+      limits = c(0, 1),
+      breaks = scales::breaks_extended(5),
+      expand = expand
+    ))
+  }
+  ggplot2::scale_y_continuous(
+    labels = shareAxisLabelFormatter(values),
+    expand = expand
+  )
+}
+
+buildCountYScale <- function(values, has_markers = FALSE) {
+  expand <- shareYScaleExpansion(has_markers, pin_top = FALSE)
+  ggplot2::scale_y_continuous(
+    labels = countAxisLabelFormatter(values),
+    expand = expand
+  )
+}
+
+markerZoneBounds <- function(start_year, end_year, is_single_year) {
+  start_val <- as.numeric(start_year)
+  if (isTRUE(is_single_year)) {
+    return(c(start = start_val, end = start_val + 1))
+  }
+  c(start = start_val, end = as.numeric(end_year) + 1)
+}
+
+markerZoneCenter <- function(start_year, end_year, is_single_year) {
+  bounds <- markerZoneBounds(start_year, end_year, is_single_year)
+  (bounds[["start"]] + bounds[["end"]]) / 2
+}
+
+markerZonesOverlap <- function(start_a, end_a, start_b, end_b) {
+  start_a < end_b && start_b < end_a
+}
+
+markerLabelHalfWidthYears <- function(
+  label,
+  year_span,
+  zone_start,
+  zone_end,
+  chars_across_plot = 52
+) {
+  span <- max(as.numeric(year_span), 1)
+  nchar_label <- max(nchar(as.character(label)), 1L)
+  text_half <- (nchar_label / 2) * (span / chars_across_plot)
+  zone_half <- max(zone_end - zone_start, 1) / 2
+  pmax(text_half, zone_half)
+}
+
+assignMarkerLabelLanes <- function(
+  markers,
+  year_span = NULL,
+  base_vjust = 1.15,
+  lane_step = 1.35
+) {
+  if (nrow(markers) == 0L) {
+    return(markers)
+  }
+  if (nrow(markers) == 1L) {
+    markers$label_vjust <- base_vjust
+    return(markers)
+  }
+
+  n <- nrow(markers)
+  zone_start <- numeric(n)
+  zone_end <- numeric(n)
+  label_half_width <- numeric(n)
+  for (i in seq_len(n)) {
+    bounds <- markerZoneBounds(
+      markers$start_year[[i]],
+      markers$end_year[[i]],
+      markers$is_single_year[[i]]
+    )
+    zone_start[[i]] <- bounds[["start"]]
+    zone_end[[i]] <- bounds[["end"]]
+    span <- if (!is.null(year_span) && is.finite(year_span) && year_span > 0) {
+      year_span
+    } else {
+      max(zone_end[[i]] - zone_start[[i]], 1)
+    }
+    label_text <- if ("event_name" %in% names(markers)) {
+      markers$event_name[[i]]
+    } else {
+      ""
+    }
+    label_half_width[[i]] <- markerLabelHalfWidthYears(
+      label = label_text,
+      year_span = span,
+      zone_start = zone_start[[i]],
+      zone_end = zone_end[[i]]
+    )
+  }
+
+  label_start <- markers$label_x - label_half_width
+  label_end <- markers$label_x + label_half_width
+
+  order <- order(markers$label_x, label_start, label_end)
+  lanes <- rep(NA_integer_, n)
+
+  for (idx in order) {
+    used <- integer(0)
+    for (j in order) {
+      if (j == idx || is.na(lanes[[j]])) {
+        next
+      }
+      if (markerZonesOverlap(
+        label_start[[idx]],
+        label_end[[idx]],
+        label_start[[j]],
+        label_end[[j]]
+      )) {
+        used <- c(used, lanes[[j]])
+      }
+    }
+    lane <- 0L
+    while (lane %in% used) {
+      lane <- lane + 1L
+    }
+    lanes[[idx]] <- lane
+  }
+
+  markers$label_vjust <- base_vjust + lanes * lane_step
+  markers
+}
+
+buildPlotEventMarkers <- function(plot_data, events, composite_members = NULL) {
   empty <- tibble::tibble(
     query_id = character(),
     event_id = character(),
     event_name = character(),
+    episode_index = integer(),
     start_year = integer(),
     end_year = integer(),
     is_single_year = logical(),
     line_color = character(),
     label_x = numeric(),
-    label_vjust = numeric()
+    label_vjust = numeric(),
+    show_label = logical()
   )
   if (nrow(plot_data) == 0 || is.null(events) || nrow(events) == 0) {
     return(empty)
   }
 
   query_ids <- unique(plot_data$query_id)
-  palette <- trackerPlotPalette(length(query_ids))
+  line_colors <- queryLineColors(query_ids)
 
-  markers <- plot_data |>
-    dplyr::distinct(.data$query_id, .data$event_id, .data$event_name) |>
-    dplyr::left_join(
-      events |> dplyr::select("event_id", "start_year", "end_year"),
-      by = "event_id"
-    ) |>
-    dplyr::filter(!is.na(.data$start_year)) |>
-    dplyr::mutate(
-      end_year = dplyr::coalesce(.data$end_year, .data$start_year),
-      is_single_year = .data$start_year == .data$end_year,
-      line_color = palette[match(.data$query_id, query_ids)],
-      label_x = dplyr::if_else(
-        .data$is_single_year,
-        as.numeric(.data$start_year),
-        (as.numeric(.data$start_year) + as.numeric(.data$end_year)) / 2
-      ),
-      label_vjust = 1.15 + (match(.data$query_id, query_ids) - 1L) * 0.55
-    )
+  query_meta <- plot_data |>
+    dplyr::distinct(.data$query_id, .data$event_id, .data$event_name, .data$event_mode)
 
-  markers |>
-    dplyr::select(
-      "query_id", "event_id", "event_name", "start_year", "end_year",
-      "is_single_year", "line_color", "label_x", "label_vjust"
+  marker_rows <- list()
+  for (i in seq_len(nrow(query_meta))) {
+    row <- query_meta[i, ]
+    event <- events |>
+      dplyr::filter(.data$event_id == row$event_id) |>
+      dplyr::slice(1)
+    if (nrow(event) == 0) {
+      next
+    }
+    event_mode <- row$event_mode
+    if (is.na(event_mode) || !nzchar(event_mode)) {
+      event_mode <- "start"
+    }
+    episodes <- resolveEventEpisodes(
+      event,
+      event_mode,
+      composite_members = composite_members,
+      events = events
     )
+    if (nrow(episodes) == 0) {
+      next
+    }
+    line_color <- line_colors[match(row$query_id, query_ids)]
+    for (j in seq_len(nrow(episodes))) {
+      ep <- episodes[j, ]
+      start_year <- as.integer(ep$start_year)
+      end_year <- as.integer(ep$end_year)
+      is_single_year <- start_year == end_year
+      marker_rows[[length(marker_rows) + 1L]] <- tibble::tibble(
+        query_id = row$query_id,
+        event_id = row$event_id,
+        event_name = row$event_name,
+        episode_index = as.integer(ep$episode_index),
+        start_year = start_year,
+        end_year = end_year,
+        is_single_year = is_single_year,
+        line_color = line_color,
+        label_x = markerZoneCenter(start_year, end_year, is_single_year),
+        label_vjust = 1.15,
+        show_label = j == 1L
+      )
+    }
+  }
+
+  if (length(marker_rows) == 0) {
+    return(empty)
+  }
+
+  result <- dplyr::bind_rows(marker_rows)
+  label_idx <- which(result$show_label)
+  if (length(label_idx) > 0L) {
+    year_span <- if ("year" %in% names(plot_data)) {
+      diff(range(plot_data$year, na.rm = TRUE))
+    } else {
+      NA_real_
+    }
+    if (!is.finite(year_span) || year_span <= 0) {
+      year_span <- NULL
+    }
+    positioned <- assignMarkerLabelLanes(
+      result[label_idx, , drop = FALSE],
+      year_span = year_span
+    )
+    result$label_vjust[label_idx] <- positioned$label_vjust
+  }
+  result
 }
 
 addPlotEventMarkerLayers <- function(p, markers) {
@@ -183,40 +394,55 @@ addPlotEventMarkerLayers <- function(p, markers) {
   }
 
   if (nrow(single_markers) > 0) {
-    p <- p + ggplot2::geom_vline(
+    p <- p + ggplot2::geom_rect(
       data = single_markers,
-      ggplot2::aes(xintercept = .data$start_year),
-      color = single_markers$line_color,
-      linewidth = 0.75,
-      inherit.aes = FALSE
+      mapping = ggplot2::aes(
+        xmin = .data$start_year,
+        xmax = .data$start_year + 1,
+        ymin = -Inf,
+        ymax = Inf
+      ),
+      fill = single_markers$line_color,
+      alpha = 0.14,
+      inherit.aes = FALSE,
+      color = NA
     )
   }
 
-  p + ggplot2::geom_text(
-    data = markers,
-    ggplot2::aes(
-      x = .data$label_x,
-      y = Inf,
-      label = .data$event_name
-    ),
-    color = markers$line_color,
-    inherit.aes = FALSE,
-    vjust = markers$label_vjust,
-    hjust = 0.5,
-    size = 3.1,
-    lineheight = 0.95,
-    show.legend = FALSE
-  )
+  label_markers <- markers |> dplyr::filter(.data$show_label)
+  if (nrow(label_markers) > 0) {
+    p <- p + ggplot2::geom_text(
+      data = label_markers,
+      ggplot2::aes(
+        x = .data$label_x,
+        y = Inf,
+        label = .data$event_name
+      ),
+      color = label_markers$line_color,
+      inherit.aes = FALSE,
+      vjust = label_markers$label_vjust,
+      hjust = 0.5,
+      size = 3.1,
+      lineheight = 0.95,
+      show.legend = FALSE
+    )
+  }
+  p
 }
 
-buildTrackerPlot <- function(plot_data, metric, events = NULL, title = NULL, subtitle = NULL) {
+buildTrackerPlot <- function(
+  plot_data,
+  metric,
+  events = NULL,
+  composite_members = NULL,
+  title = NULL,
+  subtitle = NULL
+) {
   if (nrow(plot_data) == 0) {
     stop("Cannot build plot from empty data.")
   }
 
-  query_ids <- unique(plot_data$query_id)
-  palette <- trackerPlotPalette(length(query_ids))
-  markers <- buildPlotEventMarkers(plot_data, events)
+  markers <- buildPlotEventMarkers(plot_data, events, composite_members = composite_members)
   has_markers <- nrow(markers) > 0
 
   legend_labels <- plot_data |>
@@ -224,6 +450,7 @@ buildTrackerPlot <- function(plot_data, metric, events = NULL, title = NULL, sub
     dplyr::arrange(.data$query_id)
   color_breaks <- legend_labels$query_id
   color_labels <- legend_labels$legend_label
+  color_values <- queryLineColors(color_breaks)
   n_queries <- length(color_breaks)
 
   metric_label <- formatMetricLabel(metric)
@@ -238,22 +465,10 @@ buildTrackerPlot <- function(plot_data, metric, events = NULL, title = NULL, sub
     NULL
   }
 
-  y_expand <- if (has_markers) {
-    ggplot2::expansion(mult = c(0.02, 0.2))
+  y_scale <- if (isShareMetric(metric)) {
+    buildShareYScale(plot_data$value, has_markers = has_markers)
   } else {
-    ggplot2::expansion(mult = c(0.02, 0.06))
-  }
-
-  y_scale <- if (metric == "share_total_population") {
-    ggplot2::scale_y_continuous(
-      labels = shareAxisLabelFormatter(plot_data$value),
-      expand = y_expand
-    )
-  } else {
-    ggplot2::scale_y_continuous(
-      labels = countAxisLabelFormatter(plot_data$value),
-      expand = y_expand
-    )
+    buildCountYScale(plot_data$value, has_markers = has_markers)
   }
 
   p <- ggplot2::ggplot(plot_data, ggplot2::aes(
@@ -268,7 +483,7 @@ buildTrackerPlot <- function(plot_data, metric, events = NULL, title = NULL, sub
   p +
     ggplot2::geom_line(linewidth = 1.05, lineend = "round") +
     ggplot2::scale_color_manual(
-      values = stats::setNames(palette, color_breaks),
+      values = stats::setNames(color_values, color_breaks),
       breaks = color_breaks,
       labels = color_labels,
       name = NULL
@@ -300,12 +515,22 @@ buildTrackerPlot <- function(plot_data, metric, events = NULL, title = NULL, sub
 }
 
 buildQueryDetailsRows <- function(plot_data) {
+  detail_cols <- c(
+    "query_id",
+    "line_label",
+    "chart_narrative",
+    "query_description",
+    "recipe_code",
+    "reliability_score",
+    "migration_exposure",
+    "reliability_warning"
+  )
+  available_cols <- intersect(detail_cols, names(plot_data))
+
   plot_data |>
-    dplyr::distinct(
-      .data$query_id,
-      .data$line_label,
-      .data$query_description,
-      .data$recipe_code
-    ) |>
+    dplyr::group_by(.data$query_id) |>
+    dplyr::slice(1) |>
+    dplyr::ungroup() |>
+    dplyr::select(dplyr::all_of(available_cols)) |>
     dplyr::arrange(.data$query_id)
 }
