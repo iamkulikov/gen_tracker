@@ -78,19 +78,19 @@ buildBenchmarkFixtures <- function() {
   )
 
   recipes_one <- tibble::tribble(
-    ~query_id, ~country_id, ~sex, ~age_group_id, ~custom_age_min, ~custom_age_max,
-    ~event_id, ~event_mode, ~operator, ~metric,
-    "q1", "C01", "male", "school_age", NA_integer_, NA_integer_,
-    "GLOBAL_CRISIS", "start", "experienced", "count"
+    ~query_id, ~country_id, ~sex, ~age_status_id, ~is_complement, ~custom_age_min, ~custom_age_max,
+    ~event_id, ~event_mode, ~metric,
+    "q1", "C01", "male", "school_age", FALSE, NA_integer_, NA_integer_,
+    "GLOBAL_CRISIS", "start", "count"
   )
 
   recipes_four <- tibble::tribble(
-    ~query_id, ~country_id, ~sex, ~age_group_id, ~custom_age_min, ~custom_age_max,
-    ~event_id, ~event_mode, ~operator, ~metric,
-    "q1", "C01", "male", "school_age", NA_integer_, NA_integer_, "GLOBAL_CRISIS", "start", "experienced", "count",
-    "q2", "C02", "female", "adults", NA_integer_, NA_integer_, "GLOBAL_CRISIS", "peak", "alive_during_event", "count",
-    "q3", "C03", "all", "teenagers", NA_integer_, NA_integer_, "GLOBAL_CRISIS", "period", "born_after_event", "share_total_population",
-    "q4", "C04", "all", "youth", NA_integer_, NA_integer_, "GLOBAL_CRISIS", "start", "experienced", "share_total_population"
+    ~query_id, ~country_id, ~sex, ~age_status_id, ~is_complement, ~custom_age_min, ~custom_age_max,
+    ~event_id, ~event_mode, ~metric,
+    "q1", "C01", "male", "school_age", FALSE, NA_integer_, NA_integer_, "GLOBAL_CRISIS", "start", "count",
+    "q2", "C02", "female", "alive", FALSE, NA_integer_, NA_integer_, "GLOBAL_CRISIS", "peak", "count",
+    "q3", "C03", "all", "not_born_yet", FALSE, NA_integer_, NA_integer_, "GLOBAL_CRISIS", "period", "share_total_population",
+    "q4", "C04", "all", "youth", FALSE, NA_integer_, NA_integer_, "GLOBAL_CRISIS", "start", "share_total_population"
   )
 
   list(
@@ -137,19 +137,19 @@ loadPreparedFixtures <- function(rds_path) {
   )
 
   recipes_one <- tibble::tribble(
-    ~query_id, ~country_id, ~sex, ~age_group_id, ~custom_age_min, ~custom_age_max,
-    ~event_id, ~event_mode, ~operator, ~metric,
-    "q1", country_ids[[1]], "male", "school_age", NA_integer_, NA_integer_,
-    "GLOBAL_CRISIS", "start", "experienced", "count"
+    ~query_id, ~country_id, ~sex, ~age_status_id, ~is_complement, ~custom_age_min, ~custom_age_max,
+    ~event_id, ~event_mode, ~metric,
+    "q1", country_ids[[1]], "male", "school_age", FALSE, NA_integer_, NA_integer_,
+    "GLOBAL_CRISIS", "start", "count"
   )
 
   recipes_four <- tibble::tribble(
-    ~query_id, ~country_id, ~sex, ~age_group_id, ~custom_age_min, ~custom_age_max,
-    ~event_id, ~event_mode, ~operator, ~metric,
-    "q1", country_ids[[1]], "male", "school_age", NA_integer_, NA_integer_, "GLOBAL_CRISIS", "start", "experienced", "count",
-    "q2", country_ids[[2]], "female", "adults", NA_integer_, NA_integer_, "GLOBAL_CRISIS", "peak", "alive_during_event", "count",
-    "q3", country_ids[[3]], "all", "teenagers", NA_integer_, NA_integer_, "GLOBAL_CRISIS", "period", "born_after_event", "share_total_population",
-    "q4", country_ids[[4]], "all", "youth", NA_integer_, NA_integer_, "GLOBAL_CRISIS", "start", "experienced", "share_total_population"
+    ~query_id, ~country_id, ~sex, ~age_status_id, ~is_complement, ~custom_age_min, ~custom_age_max,
+    ~event_id, ~event_mode, ~metric,
+    "q1", country_ids[[1]], "male", "school_age", FALSE, NA_integer_, NA_integer_, "GLOBAL_CRISIS", "start", "count",
+    "q2", country_ids[[2]], "female", "alive", FALSE, NA_integer_, NA_integer_, "GLOBAL_CRISIS", "peak", "count",
+    "q3", country_ids[[3]], "all", "not_born_yet", FALSE, NA_integer_, NA_integer_, "GLOBAL_CRISIS", "period", "share_total_population",
+    "q4", country_ids[[4]], "all", "youth", FALSE, NA_integer_, NA_integer_, "GLOBAL_CRISIS", "start", "share_total_population"
   )
 
   list(

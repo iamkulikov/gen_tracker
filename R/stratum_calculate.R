@@ -215,7 +215,8 @@ calculateStratumSeries <- function(
   countries,
   event_countries = NULL,
   plot_context = NULL,
-  composite_members = NULL
+  composite_members = NULL,
+  skip_event_country_check = FALSE
 ) {
   validateRecipe(
     recipe,
@@ -223,7 +224,8 @@ calculateStratumSeries <- function(
     events = events,
     age_groups = age_groups,
     event_countries = event_countries,
-    composite_members = composite_members
+    composite_members = composite_members,
+    skip_event_country_check = skip_event_country_check
   )
 
   event <- events |>

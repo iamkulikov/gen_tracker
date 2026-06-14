@@ -52,6 +52,118 @@ validateEventCountries <- function(events, countries, event_countries) {
   invisible(list(warnings = character(0)))
 }
 
+isUrlShaped <- function(x) {
+  !is.na(x) & grepl("^https?://[^[:space:]]+$", x)
+}
+
+# Validate the v2 event-curation metadata fields. Rows curated to the v2 gold
+# standard (event_origin == "manual_curated_v2") must satisfy the strict
+# requirements; legacy/dataset-derived rows only generate warnings so existing
+# development is not blocked. Returns a character vector of warnings.
+validateEventCurationFields <- function(events) {
+  events <- normalizeEventCurationFields(events)
+  v2 <- isManualCuratedV2Event(events)
+  warnings <- character(0)
+
+  allowed_family <- eventCurationFamilies()
+  allowed_channel <- eventCurationSelectionChannels()
+  score_fields <- eventCurationScoreFields()
+
+  # short_description: required and non-empty for v2 rows.
+  missing_desc <- v2 & (is.na(events$short_description) | !nzchar(trimws(events$short_description)))
+  if (any(missing_desc)) {
+    stop(
+      "manual_curated_v2 events require a non-empty short_description: ",
+      paste(utils::head(events$event_id[missing_desc], 5), collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  # source_url: required and URL-shaped for v2 rows.
+  bad_url <- v2 & !isUrlShaped(events$source_url)
+  if (any(bad_url)) {
+    stop(
+      "manual_curated_v2 events require a URL-shaped source_url (http(s)://...): ",
+      paste(utils::head(events$event_id[bad_url], 5), collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  # event_family: required and valid for v2 rows; warn for invalid legacy values.
+  fam <- events$event_family
+  bad_family_v2 <- v2 & (is.na(fam) | !(fam %in% allowed_family))
+  if (any(bad_family_v2)) {
+    stop(
+      "manual_curated_v2 events require a valid event_family: ",
+      paste(utils::head(events$event_id[bad_family_v2], 5), collapse = ", "),
+      call. = FALSE
+    )
+  }
+  bad_family_legacy <- !v2 & !is.na(fam) & nzchar(fam) & !(fam %in% allowed_family)
+  if (any(bad_family_legacy)) {
+    warnings <- c(warnings, sprintf(
+      "Legacy events have unrecognized event_family values: %s.",
+      paste(utils::head(events$event_id[bad_family_legacy], 5), collapse = ", ")
+    ))
+  }
+
+  # selection_channel: required and valid for v2 rows; warn for invalid legacy values.
+  chan <- events$selection_channel
+  bad_chan_v2 <- v2 & (is.na(chan) | !(chan %in% allowed_channel))
+  if (any(bad_chan_v2)) {
+    stop(
+      "manual_curated_v2 events require a valid selection_channel: ",
+      paste(utils::head(events$event_id[bad_chan_v2], 5), collapse = ", "),
+      call. = FALSE
+    )
+  }
+  bad_chan_legacy <- !v2 & !is.na(chan) & nzchar(chan) & !(chan %in% allowed_channel)
+  if (any(bad_chan_legacy)) {
+    warnings <- c(warnings, sprintf(
+      "Legacy events have unrecognized selection_channel values: %s.",
+      paste(utils::head(events$event_id[bad_chan_legacy], 5), collapse = ", ")
+    ))
+  }
+
+  # Score fields: integer-like within [0, 3]. Hard fail for v2, warn for legacy.
+  for (score in score_fields) {
+    values <- events[[score]]
+    out_of_range <- !is.na(values) & (values < 0L | values > 3L)
+    missing_v2 <- v2 & is.na(values)
+    if (any(v2 & out_of_range) || any(missing_v2)) {
+      stop(
+        sprintf(
+          "manual_curated_v2 events require %s as an integer in [0, 3]: %s",
+          score,
+          paste(utils::head(events$event_id[(v2 & out_of_range) | missing_v2], 5), collapse = ", ")
+        ),
+        call. = FALSE
+      )
+    }
+    if (any(!v2 & out_of_range)) {
+      warnings <- c(warnings, sprintf(
+        "Legacy events have %s outside [0, 3]: %s.",
+        score,
+        paste(utils::head(events$event_id[!v2 & out_of_range], 5), collapse = ", ")
+      ))
+    }
+  }
+
+  # include_in_core_catalogue: boolean-like (NA allowed for legacy, required for v2).
+  if (any(v2 & is.na(events$include_in_core_catalogue))) {
+    stop(
+      "manual_curated_v2 events require a boolean include_in_core_catalogue: ",
+      paste(
+        utils::head(events$event_id[v2 & is.na(events$include_in_core_catalogue)], 5),
+        collapse = ", "
+      ),
+      call. = FALSE
+    )
+  }
+
+  warnings
+}
+
 validateEvents <- function(events, countries = NULL, event_countries = NULL) {
   if (anyNA(events$event_id) || any(events$event_id == "")) {
     stop("event_id must be non-empty.")
@@ -80,6 +192,11 @@ validateEvents <- function(events, countries = NULL, event_countries = NULL) {
   allowed_scope <- c("national", "multi_country", "global")
   if (!all(events$event_scope %in% allowed_scope)) {
     stop("event_scope must be one of: national, multi_country, global.")
+  }
+
+  curation_warnings <- validateEventCurationFields(events)
+  for (msg in curation_warnings) {
+    warning(msg, call. = FALSE)
   }
 
   if (!is.null(event_countries) && !is.null(countries) && nrow(event_countries) > 0) {

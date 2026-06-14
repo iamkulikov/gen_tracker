@@ -30,7 +30,8 @@ normalizeEventsCatalog <- function(events) {
         .data$event_origin == "computed" ~ dplyr::coalesce(as.logical(.data$show_in_picker), FALSE),
         TRUE ~ TRUE
       )
-    )
+    ) |>
+    normalizeEventCurationFields()
 }
 
 eventsForEventPicker <- function(events) {

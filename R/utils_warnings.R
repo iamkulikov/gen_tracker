@@ -1,3 +1,33 @@
+indicatorCoverageDisclaimer <- function() {
+  paste(
+    "Indicator coverage limits computed and composite events.",
+    "Inflation data starts in 1960, exchange rates in 1980,",
+    "and WPP single-age population in 1950 in the current setup;",
+    "episodes before those windows are not included unless added manually to the curated catalogue."
+  )
+}
+
+isIndicatorDerivedEvent <- function(event) {
+  if (is.null(event) || nrow(event) == 0) {
+    return(FALSE)
+  }
+  origin <- event$event_origin[[1]] %||% "manual"
+  origin %in% c("computed", "composite") || isCompositeEvent(event)
+}
+
+eventCatalogDescription <- function(event) {
+  if (is.null(event) || nrow(event) == 0) {
+    return(character(0))
+  }
+  if ("description" %in% names(event)) {
+    text <- trimws(as.character(event$description[[1]]))
+    if (length(text) == 1L && nzchar(text)) {
+      return(text)
+    }
+  }
+  character(0)
+}
+
 collectQueryWarnings <- function(
   recipe,
   event,
@@ -64,6 +94,14 @@ collectQueryWarnings <- function(
   )
   if (!reliability_implemented) {
     warnings <- c(warnings, "Reliability score is not yet implemented.")
+  }
+
+  if (isIndicatorDerivedEvent(event)) {
+    warnings <- c(warnings, indicatorCoverageDisclaimer())
+    event_description <- eventCatalogDescription(event)
+    if (length(event_description) == 1L) {
+      warnings <- c(warnings, event_description)
+    }
   }
 
   unique(warnings)

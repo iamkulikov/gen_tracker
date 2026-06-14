@@ -234,6 +234,7 @@ compositeEventsAsCatalog <- function(composite_events) {
       event_origin = "composite",
       cross_country_allowed = FALSE,
       show_in_picker = TRUE,
-      country_id = as.character(.data$country_id)
+      country_id = as.character(.data$country_id),
+      description = as.character(.data$description)
     )
 }

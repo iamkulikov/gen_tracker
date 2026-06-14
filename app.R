@@ -217,6 +217,7 @@ ui <- fluidPage(
       div(
         class = "gt-export-row",
         downloadButton("download_xlsx", "Export XLSX", class = "btn-default"),
+        downloadButton("download_macro_xlsx", "Export all countries (XLSX)", class = "btn-default"),
         downloadButton("download_png", "Export PNG", class = "btn-default"),
         downloadButton("download_jpg", "Export JPEG", class = "btn-default")
       )
@@ -589,6 +590,50 @@ server <- function(input, output, session) {
       }
       narrative_paragraphs <- strsplit(narrative, "\n\n", fixed = TRUE)[[1]]
 
+      event_description <- if ("event_short_description" %in% names(rows)) {
+        rows$event_short_description[[i]]
+      } else {
+        NA_character_
+      }
+      event_source <- if ("event_source_url" %in% names(rows)) {
+        rows$event_source_url[[i]]
+      } else {
+        NA_character_
+      }
+      event_family <- if ("event_family" %in% names(rows)) {
+        rows$event_family[[i]]
+      } else {
+        NA_character_
+      }
+      event_context_tags <- list()
+      if (!is.na(event_description) && nzchar(event_description)) {
+        event_context_tags <- c(event_context_tags, list(
+          htmltools::tags$p(class = "gt-event-description", event_description)
+        ))
+      }
+      event_meta_children <- list()
+      if (!is.na(event_family) && nzchar(event_family)) {
+        event_meta_children <- c(event_meta_children, list(
+          htmltools::tags$span(class = "gt-event-family", event_family)
+        ))
+      }
+      if (!is.na(event_source) && nzchar(event_source)) {
+        event_meta_children <- c(event_meta_children, list(
+          htmltools::tags$a(
+            class = "gt-event-source",
+            href = event_source,
+            target = "_blank",
+            rel = "noopener noreferrer",
+            "Source"
+          )
+        ))
+      }
+      if (length(event_meta_children) > 0) {
+        event_context_tags <- c(event_context_tags, list(
+          htmltools::tags$p(class = "gt-event-meta", event_meta_children)
+        ))
+      }
+
       div(
         class = "gt-query-detail",
         div(class = "gt-query-detail-title", sprintf("Line %s", query_nums[[i]])),
@@ -597,6 +642,7 @@ server <- function(input, output, session) {
         lapply(narrative_paragraphs, function(paragraph) {
           htmltools::tags$p(paragraph)
         }),
+        event_context_tags,
         htmltools::tags$p(
           class = "gt-reliability-summary",
           formatReliabilitySummary(list(
@@ -666,6 +712,29 @@ server <- function(input, output, session) {
         events = events(),
         file_path = file,
         export_tables = export_tables
+      )
+    }
+  )
+
+  output$download_macro_xlsx <- downloadHandler(
+    filename = function() sprintf("generation_tracker_macro_%s.xlsx", Sys.Date()),
+    content = function(file) {
+      recipes_tbl <- valid_recipes()
+      req(nrow(recipes_tbl) > 0)
+      exportMacroLongTable(
+        file_path = file,
+        template_recipes = recipes_tbl,
+        countries = countries(),
+        population = population(),
+        events = events(),
+        age_groups = age_groups(),
+        plot_context = plot_context(),
+        composite_members = composite_members(),
+        event_countries = event_countries(),
+        migration = migration(),
+        year_range = input$year_range,
+        show_projection = isTRUE(input$show_projection),
+        population_paths = bootstrap_meta$population_paths
       )
     }
   )

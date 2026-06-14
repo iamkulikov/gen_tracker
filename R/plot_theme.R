@@ -521,6 +521,9 @@ buildQueryDetailsRows <- function(plot_data) {
     "chart_narrative",
     "query_description",
     "recipe_code",
+    "event_short_description",
+    "event_source_url",
+    "event_family",
     "reliability_score",
     "migration_exposure",
     "reliability_warning"

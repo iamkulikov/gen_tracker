@@ -250,7 +250,8 @@ assessRecipe <- function(
   events,
   age_groups,
   event_countries = NULL,
-  max_queries = 4L
+  max_queries = 4L,
+  skip_event_country_check = FALSE
 ) {
   errors <- character(0)
   warnings <- character(0)
@@ -322,30 +323,32 @@ assessRecipe <- function(
     dplyr::filter(.data$country_id == recipe$country_id) |>
     dplyr::slice(1)
 
-  compat <- checkEventCountryCompatibility(
-    country_id = recipe$country_id,
-    event = event,
-    event_countries = event_countries,
-    countries = countries,
-    country_name = country_row$country_name,
-    event_name = event$event_name
-  )
-  if (!compat$compatible) {
-    errors <- c(errors, compat$message)
-  } else if (compat$level == "warning" && nzchar(compat$message)) {
-    warnings <- c(warnings, compat$message)
-  }
+  if (!isTRUE(skip_event_country_check)) {
+    compat <- checkEventCountryCompatibility(
+      country_id = recipe$country_id,
+      event = event,
+      event_countries = event_countries,
+      countries = countries,
+      country_name = country_row$country_name,
+      event_name = event$event_name
+    )
+    if (!compat$compatible) {
+      errors <- c(errors, compat$message)
+    } else if (compat$level == "warning" && nzchar(compat$message)) {
+      warnings <- c(warnings, compat$message)
+    }
 
-  if (isCompositeEvent(event) && "country_id" %in% names(event) && !is.na(event$country_id) && nzchar(event$country_id)) {
-    if (!identical(recipe$country_id, event$country_id)) {
-      errors <- c(
-        errors,
-        sprintf(
-          "Composite event \"%s\" is defined for %s; choose that country in the recipe.",
-          event$event_name,
-          event$country_id
+    if (isCompositeEvent(event) && "country_id" %in% names(event) && !is.na(event$country_id) && nzchar(event$country_id)) {
+      if (!identical(recipe$country_id, event$country_id)) {
+        errors <- c(
+          errors,
+          sprintf(
+            "Composite event \"%s\" is defined for %s; choose that country in the recipe.",
+            event$event_name,
+            event$country_id
+          )
         )
-      )
+      }
     }
   }
 
@@ -373,7 +376,8 @@ validateRecipe <- function(
   age_groups,
   event_countries = NULL,
   composite_members = NULL,
-  max_queries = 4L
+  max_queries = 4L,
+  skip_event_country_check = FALSE
 ) {
   assessment <- assessRecipe(
     recipe = recipe,
@@ -381,7 +385,8 @@ validateRecipe <- function(
     events = events,
     age_groups = age_groups,
     event_countries = event_countries,
-    max_queries = max_queries
+    max_queries = max_queries,
+    skip_event_country_check = skip_event_country_check
   )
   if (!assessment$valid) {
     stop(paste(assessment$errors, collapse = " "))

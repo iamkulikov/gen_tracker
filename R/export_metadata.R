@@ -194,25 +194,29 @@ buildExportMethodologyNotes <- function(pop_source) {
   )
 }
 
-buildExportQueriesSheet <- function(recipes, query_descriptions, events) {
+buildExportQueriesSheet <- function(
+  recipes,
+  query_descriptions,
+  events,
+  include_reliability = TRUE
+) {
   recipes_tbl <- tibble::as_tibble(recipes)
   if (nrow(recipes_tbl) == 0L) {
     return(tibble::tibble())
   }
 
+  qd_cols <- c("query_id", "line_label", "recipe_code", "metric")
+  if (isTRUE(include_reliability)) {
+    qd_cols <- c(qd_cols, "reliability_summary")
+  }
   qd <- tibble::as_tibble(query_descriptions) |>
-    dplyr::select(
-      "query_id",
-      "line_label",
-      "recipe_code",
-      "metric",
-      "reliability_summary"
-    )
+    dplyr::select(dplyr::any_of(qd_cols))
 
-  event_cols <- events |>
+  event_cols <- normalizeEventCurationFields(events) |>
     dplyr::filter(.data$event_id %in% recipes_tbl$event_id) |>
     dplyr::mutate(
-      event_years = purrr::map2_chr(.data$start_year, .data$end_year, formatEventYearRange)
+      event_years = purrr::map2_chr(.data$start_year, .data$end_year, formatEventYearRange),
+      curation_scores = formatCurationScoreSummary(pick(dplyr::all_of(eventCurationScoreFields())))
     ) |>
     dplyr::select(
       "event_id",
@@ -220,25 +224,41 @@ buildExportQueriesSheet <- function(recipes, query_descriptions, events) {
       "event_type",
       "event_scope",
       "event_years",
-      "peak_year"
+      "peak_year",
+      "event_family",
+      short_description = "short_description",
+      "source_url",
+      "selection_channel",
+      "include_in_core_catalogue",
+      "curation_scores"
     )
+
+  out_cols <- c(
+    "query_id",
+    "line_label",
+    "recipe_code",
+    "metric",
+    "event_name",
+    "event_type",
+    "event_scope",
+    "event_years",
+    "peak_year",
+    "event_family",
+    "short_description",
+    "source_url",
+    "selection_channel",
+    "include_in_core_catalogue",
+    "curation_scores"
+  )
+  if (isTRUE(include_reliability)) {
+    out_cols <- c(out_cols, "reliability_summary")
+  }
 
   recipes_tbl |>
     dplyr::select("query_id", "event_id") |>
     dplyr::left_join(qd, by = "query_id") |>
     dplyr::left_join(event_cols, by = "event_id") |>
-    dplyr::select(
-      "query_id",
-      "line_label",
-      "recipe_code",
-      "metric",
-      "event_name",
-      "event_type",
-      "event_scope",
-      "event_years",
-      "peak_year",
-      "reliability_summary"
-    ) |>
+    dplyr::select(dplyr::any_of(out_cols)) |>
     dplyr::arrange("query_id")
 }
 
@@ -267,6 +287,46 @@ buildExportDataWide <- function(plot_data) {
       values_from = "value"
     ) |>
     dplyr::arrange(.data$year)
+}
+
+buildMacroExportDataProjectionCells <- function(plot_data, sheet_df) {
+  if (nrow(plot_data) == 0L || nrow(sheet_df) == 0L) {
+    return(data.frame(row = integer(), col = integer()))
+  }
+
+  proj_lookup <- plot_data |>
+    dplyr::filter(.data$is_projection) |>
+    dplyr::mutate(
+      series_column = exportDataSeriesColumn(.data$query_id, .data$line_label)
+    ) |>
+    dplyr::distinct(.data$country_id, .data$year, .data$series_column, .keep_all = TRUE)
+
+  if (nrow(proj_lookup) == 0L) {
+    return(data.frame(row = integer(), col = integer()))
+  }
+
+  col_names <- names(sheet_df)
+  cells <- vector("list", nrow(proj_lookup))
+  n_cells <- 0L
+  for (i in seq_len(nrow(proj_lookup))) {
+    excel_row <- which(
+      sheet_df$country_id == proj_lookup$country_id[[i]] &
+        sheet_df$year == proj_lookup$year[[i]]
+    )
+    excel_col <- match(proj_lookup$series_column[[i]], col_names)
+    if (length(excel_row) != 1L || is.na(excel_col)) {
+      next
+    }
+    n_cells <- n_cells + 1L
+    cells[[n_cells]] <- c(excel_row + 1L, excel_col)
+  }
+
+  if (n_cells == 0L) {
+    return(data.frame(row = integer(), col = integer()))
+  }
+
+  mat <- do.call(rbind, cells[seq_len(n_cells)])
+  data.frame(row = mat[, 1], col = mat[, 2])
 }
 
 buildExportDataProjectionCells <- function(plot_data, wide_df) {

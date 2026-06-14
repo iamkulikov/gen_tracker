@@ -128,6 +128,32 @@ writeExportXlsxWorkbook <- function(
   invisible(file_path)
 }
 
+applyExportXlsxProjectionStyles <- function(
+  wb,
+  sheet_name,
+  projection_style,
+  proj_cells
+) {
+  if (nrow(proj_cells) == 0L) {
+    return(invisible(NULL))
+  }
+
+  for (col_idx in unique(proj_cells$col)) {
+    rows_for_col <- unique(proj_cells$row[proj_cells$col == col_idx])
+    openxlsx::addStyle(
+      wb,
+      sheet = sheet_name,
+      style = projection_style,
+      rows = rows_for_col,
+      cols = col_idx,
+      gridExpand = TRUE,
+      stack = TRUE
+    )
+  }
+
+  invisible(NULL)
+}
+
 exportXlsxValueStyle <- function(metric) {
   if (isShareMetric(metric)) {
     openxlsx::createStyle(numFmt = "0.00%")
@@ -210,7 +236,10 @@ applyExportXlsxSheetStyle <- function(
         gridExpand = TRUE,
         stack = TRUE
       )
-      wrap_rows <- which(sheet_df$field %in% c("line_label", "recipe_code", "reliability_summary"))
+      wrap_rows <- which(sheet_df$field %in% c(
+        "line_label", "recipe_code", "reliability_summary",
+        "short_description", "source_url", "curation_scores"
+      ))
       if (length(wrap_rows) > 0L) {
         openxlsx::addStyle(
           wb,
@@ -255,19 +284,18 @@ applyExportXlsxSheetStyle <- function(
         stack = TRUE
       )
       if (!is.null(plot_data) && !is.null(data_wide)) {
-        proj_cells <- buildExportDataProjectionCells(plot_data, data_wide)
+        proj_cells <- if ("country_id" %in% names(data_wide)) {
+          buildMacroExportDataProjectionCells(plot_data, data_wide)
+        } else {
+          buildExportDataProjectionCells(plot_data, data_wide)
+        }
         if (nrow(proj_cells) > 0L) {
-          for (i in seq_len(nrow(proj_cells))) {
-            openxlsx::addStyle(
-              wb,
-              sheet = sheet_name,
-              style = projection_style,
-              rows = proj_cells$row[i],
-              cols = proj_cells$col[i],
-              gridExpand = TRUE,
-              stack = TRUE
-            )
-          }
+          applyExportXlsxProjectionStyles(
+            wb = wb,
+            sheet_name = sheet_name,
+            projection_style = projection_style,
+            proj_cells = proj_cells
+          )
         }
       }
     }
@@ -287,11 +315,16 @@ exportXlsxNumericColumnIndexes <- function(sheet_name, sheet_df, metric) {
   if (sheet_name != "data") {
     return(integer())
   }
-  year_idx <- match("year", names(sheet_df))
-  if (is.na(year_idx)) {
-    return(integer())
+  non_numeric <- match(c("year", "country_id"), names(sheet_df))
+  non_numeric <- non_numeric[!is.na(non_numeric)]
+  if (length(non_numeric) == 0L) {
+    year_idx <- match("year", names(sheet_df))
+    if (is.na(year_idx)) {
+      return(integer())
+    }
+    return(seq_len(ncol(sheet_df))[-year_idx])
   }
-  seq_len(ncol(sheet_df))[-year_idx]
+  setdiff(seq_len(ncol(sheet_df)), non_numeric)
 }
 
 exportXlsxAutoColumnWidths <- function(sheet_df) {

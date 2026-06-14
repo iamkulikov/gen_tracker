@@ -106,228 +106,38 @@ resolveTokensFromText <- function(text) {
   unique(hits)
 }
 
-# Explicit multi-country links where token parsing is insufficient.
-explicitMultiLinks <- tribble(
-  ~event_id, ~country_id, ~country_role,
-  "IND_PARTITION_INDEPENDENCE", "IND", "affected",
-  "IND_PARTITION_INDEPENDENCE", "PAK", "affected",
-  "IND_PARTITION_INDEPENDENCE", "BGD", "origin",
-  "IND_INDO_PAK_WAR_1965", "IND", "affected",
-  "IND_INDO_PAK_WAR_1965", "PAK", "affected",
-  "BGD_PARTITION_EAST_PAKISTAN", "BGD", "affected",
-  "BGD_PARTITION_EAST_PAKISTAN", "PAK", "origin",
-  "BGD_LIBERATION_WAR", "BGD", "affected",
-  "BGD_LIBERATION_WAR", "PAK", "origin",
-  "BGD_LIBERATION_WAR", "IND", "culturally_relevant",
-  "BGD_ROHINGYA_INFLUX", "BGD", "affected",
-  "BGD_ROHINGYA_INFLUX", "MMR", "origin",
-  "PAK_PARTITION_INDEPENDENCE", "PAK", "affected",
-  "PAK_PARTITION_INDEPENDENCE", "IND", "origin",
-  "PAK_BANGLADESH_WAR_1971", "PAK", "affected",
-  "PAK_BANGLADESH_WAR_1971", "BGD", "affected",
-  "PAK_BANGLADESH_WAR_1971", "IND", "culturally_relevant",
-  "PAK_AFGHAN_JIHAD_REFUGEES", "PAK", "affected",
-  "PAK_AFGHAN_JIHAD_REFUGEES", "AFG", "origin",
-  "PAK_KASHMIR_EARTHQUAKE", "PAK", "affected",
-  "PAK_KASHMIR_EARTHQUAKE", "IND", "affected",
-  "PAK_WAR_ON_TERROR", "PAK", "affected",
-  "PAK_WAR_ON_TERROR", "AFG", "origin",
-  "IDN_NATIONAL_REVOLUTION", "IDN", "affected",
-  "IDN_NATIONAL_REVOLUTION", "NLD", "origin",
-  "IDN_ASIAN_CRISIS_REFORMASI", "IDN", "affected",
-  "IDN_EAST_TIMOR_CRISIS", "IDN", "affected",
-  "IDN_EAST_TIMOR_CRISIS", "TLS", "affected",
-  "IDN_ACEH_TSUNAMI", "IDN", "affected",
-  "IDN_ACEH_TSUNAMI", "THA", "affected",
-  "IDN_ACEH_TSUNAMI", "IND", "affected",
-  "NGA_BOKO_HARAM_INSURGENCY", "NGA", "affected",
-  "NGA_BOKO_HARAM_INSURGENCY", "NER", "affected",
-  "NGA_BOKO_HARAM_INSURGENCY", "CMR", "affected",
-  "NGA_EBOLA_CONTAINMENT", "NGA", "affected",
-  "NGA_EBOLA_CONTAINMENT", "GIN", "origin",
-  "NGA_EBOLA_CONTAINMENT", "LBR", "origin",
-  "NGA_EBOLA_CONTAINMENT", "SLE", "origin",
-  "RUS_AFGHAN_WAR", "RUS", "affected",
-  "RUS_AFGHAN_WAR", "AFG", "affected",
-  "RUS_SOVIET_DISSOLUTION_SHOCK", "RUS", "affected",
-  "RUS_SOVIET_DISSOLUTION_SHOCK", "UKR", "affected",
-  "RUS_SOVIET_DISSOLUTION_SHOCK", "BLR", "affected",
-  "RUS_SOVIET_DISSOLUTION_SHOCK", "KAZ", "affected",
-  "RUS_UKRAINE_WAR", "RUS", "affected",
-  "RUS_UKRAINE_WAR", "UKR", "affected",
-  "USA_VIETNAM_WAR", "USA", "affected",
-  "USA_VIETNAM_WAR", "VNM", "affected",
-  "USA_STAGFLATION_OIL_SHOCK", "USA", "affected",
-  "USA_AFGHANISTAN_IRAQ_WARS", "USA", "affected",
-  "USA_AFGHANISTAN_IRAQ_WARS", "AFG", "affected",
-  "USA_AFGHANISTAN_IRAQ_WARS", "IRQ", "affected",
-  "CHN_WTO_ACCESSION", "CHN", "affected",
-  "CHN_SARS_OUTBREAK", "CHN", "origin",
-  "CHN_SARS_OUTBREAK", "HKG", "affected",
-  "CHN_SARS_OUTBREAK", "VNM", "affected",
-  "KOR_KOREAN_WAR", "KOR", "affected",
-  "KOR_KOREAN_WAR", "PRK", "affected",
-  "KOR_KOREAN_WAR", "USA", "affected",
-  "KOR_KOREAN_WAR", "CHN", "affected",
-  "KOR_DIVISION_AFTERSHOCK", "KOR", "affected",
-  "KOR_DIVISION_AFTERSHOCK", "PRK", "affected",
-  "KOR_WORLD_CUP_2002", "KOR", "affected",
-  "KOR_WORLD_CUP_2002", "JPN", "affected",
-  "KOR_ASIAN_FINANCIAL_CRISIS", "KOR", "affected",
-  "KOR_KOREAN_WAVE", "KOR", "origin",
-  "VNM_VIETNAM_WAR", "VNM", "affected",
-  "VNM_VIETNAM_WAR", "USA", "affected",
-  "VNM_FIRST_INDOCHINA_FINAL", "VNM", "affected",
-  "VNM_FIRST_INDOCHINA_FINAL", "FRA", "origin",
-  "VNM_BOAT_PEOPLE_EXODUS", "VNM", "origin",
-  "VNM_SINO_VIETNAMESE_WAR", "VNM", "affected",
-  "VNM_SINO_VIETNAMESE_WAR", "CHN", "affected",
-  "VNM_US_NORMALIZATION", "VNM", "affected",
-  "VNM_US_NORMALIZATION", "USA", "affected",
-  "VNM_WTO_EXPORT_BOOM", "VNM", "affected",
-  "VNM_SEA_PROTESTS_2014", "VNM", "affected",
-  "VNM_SEA_PROTESTS_2014", "CHN", "origin",
-  "UKR_INDEPENDENCE", "UKR", "affected",
-  "UKR_INDEPENDENCE", "RUS", "origin",
-  "UKR_CHERNOBYL_DISASTER", "UKR", "affected",
-  "UKR_CHERNOBYL_DISASTER", "BLR", "affected",
-  "UKR_GAS_DISPUTES", "UKR", "affected",
-  "UKR_GAS_DISPUTES", "RUS", "origin",
-  "UKR_CRIMEA_DONBAS_WAR", "UKR", "affected",
-  "UKR_CRIMEA_DONBAS_WAR", "RUS", "affected",
-  "UKR_FULL_SCALE_INVASION", "UKR", "affected",
-  "UKR_FULL_SCALE_INVASION", "RUS", "origin",
-  "UKR_EU_CANDIDATE_STATUS", "UKR", "affected",
-  "ETH_ERITREA_FEDERATION_ANNEXATION", "ETH", "affected",
-  "ETH_ERITREA_FEDERATION_ANNEXATION", "ERI", "affected",
-  "ETH_ERITREAN_WAR", "ETH", "affected",
-  "ETH_ERITREAN_WAR", "ERI", "affected",
-  "ETH_GERD_PROJECT", "ETH", "affected",
-  "ETH_GERD_PROJECT", "EGY", "affected",
-  "ETH_GERD_PROJECT", "SDN", "affected",
-  "COD_CONGO_CRISIS", "COD", "affected",
-  "COD_CONGO_CRISIS", "FRA", "origin",
-  "COD_FIRST_CONGO_WAR", "COD", "affected",
-  "COD_FIRST_CONGO_WAR", "RWA", "origin",
-  "COD_FIRST_CONGO_WAR", "UGA", "origin",
-  "COD_SECOND_CONGO_WAR", "COD", "affected",
-  "COD_SECOND_CONGO_WAR", "RWA", "affected",
-  "COD_SECOND_CONGO_WAR", "UGA", "affected",
-  "COD_KIVU_CONFLICT", "COD", "affected",
-  "COD_KIVU_CONFLICT", "RWA", "affected",
-  "TZA_INDEPENDENCE_UNION", "TZA", "affected",
-  "TZA_INDEPENDENCE_UNION", "ZMB", "origin",
-  "TZA_UGANDA_WAR", "TZA", "affected",
-  "TZA_UGANDA_WAR", "UGA", "affected",
-  "UGA_TANZANIA_WAR", "UGA", "affected",
-  "UGA_TANZANIA_WAR", "TZA", "affected",
-  "UGA_LRA_CONFLICT", "UGA", "affected",
-  "UGA_LRA_CONFLICT", "COD", "affected",
-  "UGA_LRA_CONFLICT", "SSD", "affected",
-  "SDN_SOUTH_SUDAN_SECESSION", "SDN", "affected",
-  "SDN_SOUTH_SUDAN_SECESSION", "SSD", "affected",
-  "IRQ_IRAN_IRAQ_WAR", "IRQ", "affected",
-  "IRQ_IRAN_IRAQ_WAR", "IRN", "affected",
-  "IRQ_GULF_WAR", "IRQ", "affected",
-  "IRQ_GULF_WAR", "KWT", "affected",
-  "IRQ_GULF_WAR", "USA", "affected",
-  "IRQ_SANCTIONS_DECADE", "IRQ", "affected",
-  "IRQ_2003_INVASION", "IRQ", "affected",
-  "IRQ_2003_INVASION", "USA", "origin",
-  "IRQ_2003_INVASION", "GBR", "origin",
-  "IRQ_ISIS_WAR", "IRQ", "affected",
-  "IRQ_ISIS_WAR", "SYR", "affected",
-  "IRN_1953_COUP", "IRN", "affected",
-  "IRN_1953_COUP", "GBR", "origin",
-  "IRN_1953_COUP", "USA", "origin",
-  "IRN_IRAQ_WAR", "IRN", "affected",
-  "IRN_IRAQ_WAR", "IRQ", "affected",
-  "IRN_NUCLEAR_DEAL_SANCTIONS", "IRN", "affected",
-  "IRN_NUCLEAR_DEAL_SANCTIONS", "USA", "origin",
-  "EGY_SUEZ_CRISIS", "EGY", "affected",
-  "EGY_SUEZ_CRISIS", "GBR", "origin",
-  "EGY_SUEZ_CRISIS", "FRA", "origin",
-  "EGY_SUEZ_CRISIS", "ISR", "affected",
-  "EGY_SIX_DAY_WAR", "EGY", "affected",
-  "EGY_SIX_DAY_WAR", "ISR", "affected",
-  "EGY_SIX_DAY_WAR", "JOR", "affected",
-  "EGY_OCTOBER_WAR", "EGY", "affected",
-  "EGY_OCTOBER_WAR", "ISR", "affected",
-  "EGY_CAMP_DAVID_PEACE", "EGY", "affected",
-  "EGY_CAMP_DAVID_PEACE", "ISR", "affected",
-  "DZA_ALGERIAN_WAR", "DZA", "affected",
-  "DZA_ALGERIAN_WAR", "FRA", "origin",
-  "DZA_ARAB_SPRING_PROTESTS", "DZA", "affected",
-  "MAR_GREEN_MARCH", "MAR", "affected",
-  "MAR_GREEN_MARCH", "ESH", "affected",
-  "MAR_WESTERN_SAHARA_WAR", "MAR", "affected",
-  "MAR_WESTERN_SAHARA_WAR", "ESH", "affected",
-  "SAU_GULF_SECURITY_ERA", "SAU", "affected",
-  "SAU_GULF_SECURITY_ERA", "IRQ", "origin",
-  "SAU_GULF_WAR_TROOPS", "SAU", "affected",
-  "SAU_GULF_WAR_TROOPS", "IRQ", "origin",
-  "SAU_GULF_WAR_TROOPS", "USA", "affected",
-  "SAU_ARAB_SPRING_INTERVENTIONS", "SAU", "origin",
-  "SAU_ARAB_SPRING_INTERVENTIONS", "YEM", "affected",
-  "SAU_YEMEN_INTERVENTION", "SAU", "origin",
-  "SAU_YEMEN_INTERVENTION", "YEM", "affected",
-  "MMR_ROHINGYA_CRISIS", "MMR", "origin",
-  "MMR_ROHINGYA_CRISIS", "BGD", "affected",
-  "PHL_INDEPENDENCE", "PHL", "affected",
-  "PHL_INDEPENDENCE", "USA", "origin",
-  "PHL_ASIAN_FINANCIAL_CRISIS", "PHL", "affected",
-  "MEX_NAFTA_LAUNCH", "MEX", "affected",
-  "MEX_NAFTA_LAUNCH", "USA", "affected",
-  "MEX_NAFTA_LAUNCH", "CAN", "affected",
-  "COL_PLAN_COLOMBIA", "COL", "affected",
-  "COL_PLAN_COLOMBIA", "USA", "origin",
-  "COL_VENEZUELAN_MIGRATION", "COL", "affected",
-  "COL_VENEZUELAN_MIGRATION", "VEN", "origin",
-  "ARG_FALKLANDS_WAR", "ARG", "affected",
-  "ARG_FALKLANDS_WAR", "GBR", "affected",
-  "KEN_EMBASSY_BOMBING", "KEN", "affected",
-  "KEN_EMBASSY_BOMBING", "TZA", "affected",
-  "KEN_EMBASSY_BOMBING", "USA", "origin",
-  "DEU_OSTPOLITIK", "DEU", "affected",
-  "DEU_OSTPOLITIK", "POL", "affected",
-  "DEU_OIL_SHOCK_RECESSION", "DEU", "affected",
-  "DEU_EUROZONE_CRISIS_RESPONSE", "DEU", "affected",
-  "DEU_EUROZONE_CRISIS_RESPONSE", "GRC", "affected",
-  "GBR_SUEZ_CRISIS", "GBR", "affected",
-  "GBR_SUEZ_CRISIS", "EGY", "affected",
-  "GBR_TROUBLES", "GBR", "affected",
-  "GBR_TROUBLES", "IRL", "affected",
-  "GBR_EEC_ENTRY", "GBR", "affected",
-  "GBR_BLACK_WEDNESDAY", "GBR", "affected",
-  "GBR_IRAQ_WAR", "GBR", "affected",
-  "GBR_IRAQ_WAR", "IRQ", "affected",
-  "GBR_2008_FINANCIAL_CRISIS", "GBR", "affected",
-  "GBR_BREXIT", "GBR", "affected",
-  "FRA_ALGERIAN_WAR", "FRA", "origin",
-  "FRA_ALGERIAN_WAR", "DZA", "affected",
-  "FRA_TRENTE_GLORIEUSES_END", "FRA", "affected",
-  "FRA_EURO_ADOPTION", "FRA", "affected",
-  "FRA_EURO_ADOPTION", "DEU", "affected",
-  "ITA_LIRA_CRISIS", "ITA", "affected",
-  "ITA_EURO_ADOPTION", "ITA", "affected",
-  "ITA_SOVEREIGN_DEBT_CRISIS", "ITA", "affected",
-  "ITA_COVID_FIRST_WAVE", "ITA", "affected",
-  "ESP_EU_ACCESSION", "ESP", "affected",
-  "ESP_2008_HOUSING_CRISIS", "ESP", "affected",
-  "POL_NATO_EU_ACCESSION", "POL", "affected",
-  "POL_SMOLENSK_DISASTER", "POL", "affected",
-  "POL_SMOLENSK_DISASTER", "RUS", "origin",
-  "CAN_FREE_TRADE_NAFTA", "CAN", "affected",
-  "CAN_FREE_TRADE_NAFTA", "USA", "affected",
-  "CAN_FREE_TRADE_NAFTA", "MEX", "affected",
-  "TUR_CYPRUS_INTERVENTION", "TUR", "affected",
-  "TUR_CYPRUS_INTERVENTION", "CYP", "affected",
-  "THA_ASIAN_FINANCIAL_CRISIS", "THA", "affected",
-  "THA_2004_TSUNAMI", "THA", "affected",
-  "THA_2004_TSUNAMI", "IDN", "affected",
-  "THA_2004_TSUNAMI", "IND", "affected",
-  "JPN_OIL_SHOCK_INDUSTRIAL_SHIFT", "JPN", "affected"
-)
+# Curated cross-country links: source of truth is data/event_countries_manual.csv.
+# This file is hand-editable and authoritative for manually curated
+# origin/affected/culturally_relevant links. The in-code explicitMultiLinks
+# table was removed in v2; token parsing below remains only as a fallback for
+# legacy multi-country events not yet present in the curated file.
+manual_links_source_path <- resolveEventDataPath("event_countries_manual.csv", data_dir)
+loadCuratedManualLinks <- function(path) {
+  if (!file.exists(path)) {
+    return(tibble(
+      event_id = character(),
+      country_id = character(),
+      country_role = character()
+    ))
+  }
+  read_csv(path, show_col_types = FALSE) |>
+    transmute(
+      event_id = as.character(event_id),
+      country_id = as.character(country_id),
+      country_role = as.character(country_role)
+    )
+}
+
+curated_multi_links <- loadCuratedManualLinks(manual_links_source_path)
+
+allowed_roles <- c("affected", "origin", "culturally_relevant")
+bad_roles <- setdiff(unique(curated_multi_links$country_role), allowed_roles)
+if (length(bad_roles) > 0) {
+  stop(
+    "Unsupported country_role in ", manual_links_source_path, ": ",
+    paste(bad_roles, collapse = ", ")
+  )
+}
 
 buildNationalLinks <- function(events) {
   events |>
@@ -339,12 +149,11 @@ buildNationalLinks <- function(events) {
     select(event_id, country_id, country_role)
 }
 
-buildMultiLinksFromTokens <- function(events) {
-  multi <- events |> filter(event_scope == "multi_country")
-  explicit_ids <- explicitMultiLinks$event_id
-
-  token_rows <- multi |>
-    filter(!event_id %in% explicit_ids) |>
+# Token fallback for legacy multi-country events not covered by the curated
+# manual links file. Curated links remain authoritative.
+buildTokenFallbackLinks <- function(events, curated_ids) {
+  events |>
+    filter(event_scope == "multi_country", !event_id %in% curated_ids) |>
     mutate(prefix = vapply(event_id, eventPrefix, character(1))) |>
     rowwise() |>
     mutate(
@@ -359,19 +168,16 @@ buildMultiLinksFromTokens <- function(events) {
     transmute(
       event_id = event_id,
       country_id = country_ids,
-      country_role = if_else(country_id == prefix, "affected", "affected")
+      country_role = "affected"
     )
-
-  bind_rows(
-    explicitMultiLinks,
-    token_rows
-  )
 }
 
 national_links <- buildNationalLinks(events)
-multi_links <- buildMultiLinksFromTokens(events)
+token_links <- buildTokenFallbackLinks(events, curated_multi_links$event_id)
 
-event_countries <- bind_rows(national_links, multi_links) |>
+# Curated links first so their explicit country_role wins over the default
+# "affected" role assigned by national/token derivation in distinct().
+event_countries <- bind_rows(curated_multi_links, national_links, token_links) |>
   distinct(event_id, country_id, .keep_all = TRUE) |>
   filter(country_id %in% valid_country_ids) |>
   arrange(event_id, country_id)
