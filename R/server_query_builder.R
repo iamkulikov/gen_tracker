@@ -121,6 +121,15 @@ queryBuilderServer <- function(
       )
     })
 
+    output$event_info_ui <- shiny::renderUI({
+      if (!render_outputs_reactive()) {
+        return(NULL)
+      }
+
+      event_row <- lookupQueryBuilderEvent(events_catalog_reactive(), selected_event())
+      queryBuilderEventInfoUi(event_row)
+    })
+
     output$event_ui <- shiny::renderUI({
       if (!render_outputs_reactive()) {
         return(htmltools::tags$select(
@@ -240,6 +249,7 @@ queryBuilderServer <- function(
 
     shiny::outputOptions(output, "country_ui", suspendWhenHidden = FALSE)
     shiny::outputOptions(output, "event_ui", suspendWhenHidden = FALSE)
+    shiny::outputOptions(output, "event_info_ui", suspendWhenHidden = FALSE)
     shiny::outputOptions(output, "age_status_ui", suspendWhenHidden = FALSE)
     shiny::outputOptions(output, "custom_age_ui", suspendWhenHidden = FALSE)
 

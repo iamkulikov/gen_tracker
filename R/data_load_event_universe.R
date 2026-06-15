@@ -27,6 +27,7 @@ normalizeEventsCatalog <- function(events) {
       show_in_picker = dplyr::case_when(
         .data$event_origin == "manual" ~ TRUE,
         .data$event_origin == "composite" ~ TRUE,
+        .data$event_origin == "year_marker" ~ TRUE,
         .data$event_origin == "computed" ~ dplyr::coalesce(as.logical(.data$show_in_picker), FALSE),
         TRUE ~ TRUE
       )
@@ -191,7 +192,7 @@ mergeDeployEventLinks <- function(
   manual_path <- manual_path %||% eventCountriesManualLayerPath(data_dir)
   computed_path <- computed_path %||% eventCountriesComputedLayerPath(data_dir)
   composite_path <- composite_path %||% eventCountriesCompositeLayerPath(data_dir)
-  deploy_path <- deploy_path %||% resolveEventDataPath("event_countries.csv", data_dir)
+  deploy_path <- deploy_path %||% eventCountriesDeployWritePath(data_dir)
 
   manual_links <- manual_links %||% loadEventCountryLayer(manual_path)
   computed_links <- computed_links %||% loadEventCountryLayer(computed_path)
@@ -220,7 +221,7 @@ mergeDeployEventTags <- function(
 ) {
   manual_path <- manual_path %||% eventTagsManualLayerPath(data_dir)
   computed_path <- computed_path %||% eventTagsComputedLayerPath(data_dir)
-  deploy_path <- deploy_path %||% resolveEventDataPath("event_tags.csv", data_dir)
+  deploy_path <- deploy_path %||% eventTagsDeployWritePath(data_dir)
 
   manual_tags <- manual_tags %||% loadEventTagLayer(manual_path)
   computed_tags <- computed_tags %||% loadEventTagLayer(computed_path)
@@ -251,14 +252,12 @@ loadEventsUniverse <- function(
 ) {
   data_dir <- data_dir %||% dirname(manual_path)
   manual <- loadEvents(manual_path)
-  computed_path <- computed_path %||% resolveEventDataPath("events_computed.csv", data_dir)
+  computed_path <- computed_path %||% eventsComputedDataPath(data_dir)
   computed <- loadComputedEventsCatalog(computed_path)
   assertNoEventIdCollisions(manual, computed)
 
-  composite_events_path <- composite_events_path %||%
-    resolveEventDataPath("composite_events.csv", data_dir)
-  composite_members_path <- composite_members_path %||%
-    resolveEventDataPath("composite_members.csv", data_dir)
+  composite_events_path <- composite_events_path %||% compositeEventsDataPath(data_dir)
+  composite_members_path <- composite_members_path %||% compositeMembersDataPath(data_dir)
 
   composite_events <- loadCompositeEvents(composite_events_path)
   composite_members <- loadCompositeMembers(composite_members_path)
@@ -294,7 +293,7 @@ loadEventCountriesUniverse <- function(
   data_dir = NULL
 ) {
   data_dir <- data_dir %||% dirname(manual_path)
-  deploy_path <- resolveEventDataPath("event_countries.csv", data_dir)
+  deploy_path <- eventCountriesDeployPath(data_dir)
 
   if (file.exists(deploy_path)) {
     deploy_links <- loadEventCountries(deploy_path)
@@ -307,15 +306,9 @@ loadEventCountriesUniverse <- function(
     emptyComputedEventCountriesFrame()
   }
   computed_path <- computed_path %||% eventCountriesComputedLayerPath(data_dir)
-  if (!file.exists(computed_path)) {
-    computed_path <- resolveEventDataPath("event_countries_computed.csv", data_dir)
-  }
   computed <- loadEventCountryLayer(computed_path)
 
   composite_links_path <- composite_links_path %||% eventCountriesCompositeLayerPath(data_dir)
-  if (!file.exists(composite_links_path)) {
-    composite_links_path <- resolveEventDataPath("event_countries_composite.csv", data_dir)
-  }
   composite_links <- loadEventCountryLayer(composite_links_path)
 
   using_legacy_split <- nrow(computed) > 0 || nrow(composite_links) > 0
@@ -333,7 +326,7 @@ loadEventCountriesUniverse <- function(
 }
 
 loadEventTagsUniverse <- function(data_dir = resolveDataDir()) {
-  deploy_path <- resolveEventDataPath("event_tags.csv", data_dir)
+  deploy_path <- eventTagsDeployPath(data_dir)
   if (file.exists(deploy_path)) {
     tags <- loadEventTagLayer(deploy_path)
     if ("origin" %in% names(tags)) {
@@ -344,16 +337,13 @@ loadEventTagsUniverse <- function(data_dir = resolveDataDir()) {
 
   manual <- loadEventTagLayer(eventTagsManualLayerPath(data_dir))
   if (nrow(manual) == 0) {
-    legacy_manual <- resolveEventDataPath("event_tags.csv", data_dir)
+    legacy_manual <- eventTagsDeployPath(data_dir)
     if (file.exists(legacy_manual)) {
       manual <- loadEventTagLayer(legacy_manual)
     }
   }
 
   computed_path <- eventTagsComputedLayerPath(data_dir)
-  if (!file.exists(computed_path)) {
-    computed_path <- resolveEventDataPath("event_tags_computed.csv", data_dir)
-  }
   computed <- loadEventTagLayer(computed_path)
 
   if (nrow(computed) > 0) {

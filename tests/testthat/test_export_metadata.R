@@ -131,9 +131,9 @@ test_that("buildExportMetadataTables captures view state and source metadata", {
     ),
     population = population,
     population_paths = "data/population.rds",
-    events_path = "data/events.csv",
-    countries_path = "data/countries.csv",
-    event_countries_path = "data/event_countries.csv",
+    events_path = "data/1_events.csv",
+    countries_path = "data/0_countries.csv",
+    event_countries_path = "data/9_event_countries.csv",
     event_countries = buildTestEventCountries(),
     event_countries_loaded = TRUE,
     event_countries_rows = 4L

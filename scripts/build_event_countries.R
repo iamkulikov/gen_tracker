@@ -13,15 +13,15 @@ setwd(resolveProjectRoot())
 loadProjectSources()
 
 data_dir <- Sys.getenv("GEN_TRACKER_DATA_DIR", unset = "data")
-events_path <- resolveEventDataPath("events.csv", data_dir)
-countries_path <- resolveEventDataPath("countries.csv", data_dir)
-manual_layer_path <- eventCountriesManualLayerPath(data_dir)
+events_path <- eventsDataPath(data_dir)
+countries_path <- countriesDataPath(data_dir)
+manual_layer_write_path <- eventCountriesManualLayerWritePath(data_dir)
 
 if (!file.exists(events_path)) {
-  stop("Missing ", events_path, ". Place events.csv in data/ before running this script.")
+  stop("Missing ", events_path, ". Place ", DATA_FILE_EVENTS, " in data/ before running this script.")
 }
 if (!file.exists(countries_path)) {
-  stop("Missing ", countries_path, ". Place countries.csv in data/ before running this script.")
+  stop("Missing ", countries_path, ". Place ", DATA_FILE_COUNTRIES, " in data/ before running this script.")
 }
 
 events <- read_csv(events_path, show_col_types = FALSE)
@@ -106,12 +106,12 @@ resolveTokensFromText <- function(text) {
   unique(hits)
 }
 
-# Curated cross-country links: source of truth is data/event_countries_manual.csv.
+# Curated cross-country links: source of truth is data/2_event_countries_curated.csv.
 # This file is hand-editable and authoritative for manually curated
 # origin/affected/culturally_relevant links. The in-code explicitMultiLinks
 # table was removed in v2; token parsing below remains only as a fallback for
 # legacy multi-country events not yet present in the curated file.
-manual_links_source_path <- resolveEventDataPath("event_countries_manual.csv", data_dir)
+manual_links_source_path <- eventCountriesCuratedPath(data_dir)
 loadCuratedManualLinks <- function(path) {
   if (!file.exists(path)) {
     return(tibble(
@@ -208,13 +208,13 @@ if (length(orphan_links) > 0) {
   stop("Links reference unknown event_id values.")
 }
 
-writeEventCountryLayer(event_countries, manual_layer_path)
+writeEventCountryLayer(event_countries, manual_layer_write_path)
 merged <- mergeDeployEventLinks(data_dir = data_dir, manual_links = event_countries)
 
 message(sprintf(
   "Wrote %s manual rows to %s; merged deploy file %s (%d rows total).",
   nrow(event_countries),
-  manual_layer_path,
+  manual_layer_write_path,
   merged$deploy_path,
   nrow(merged$links)
 ))

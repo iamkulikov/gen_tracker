@@ -84,10 +84,11 @@ loadIndicatorsDirectory <- function(dir_path) {
   stats::setNames(
     lapply(files, function(path) {
       ind <- loadIndicatorFile(path)
-      validateIndicators(ind, indicator_name = basename(path))
+      indicator_name <- indicatorNameFromCsvBasename(path)
+      validateIndicators(ind, indicator_name = indicator_name)
       ind
     }),
-    tools::file_path_sans_ext(basename(files))
+    vapply(files, indicatorNameFromCsvBasename, character(1))
   )
 }
 

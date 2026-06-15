@@ -1,5 +1,5 @@
 #!/usr/bin/env Rscript
-# Generate events_computed.csv from indicators + criteria (idempotent; manual events untouched).
+# Generate 6_events_computed.csv from indicators + criteria (idempotent; manual events untouched).
 
 suppressPackageStartupMessages({
   library(readr)
@@ -13,19 +13,19 @@ loadProjectSources()
 
 data_dir <- Sys.getenv("GEN_TRACKER_DATA_DIR", unset = "data")
 indicators_dir <- resolveIndicatorsCsvDir(data_dir)
-criteria_path <- resolveConfigPath("event_criteria.csv", data_dir)
+criteria_path <- eventCriteriaPath(data_dir)
 if (!file.exists(criteria_path)) {
-  template_path <- resolveEventDataPath("event_criteria.template.csv", data_dir)
+  template_path <- eventCriteriaTemplatePath(data_dir)
   if (file.exists(template_path)) {
     dir.create(dataConfigDir(data_dir), recursive = TRUE, showWarnings = FALSE)
-    config_copy <- file.path(dataConfigDir(data_dir), "event_criteria.csv")
-    file.copy(template_path, config_copy)
+    config_copy <- file.path(dataConfigDir(data_dir), DATA_FILE_EVENT_CRITERIA)
+    file.copy(template_path, config_copy, overwrite = TRUE)
     criteria_path <- config_copy
     message("Created ", criteria_path, " from template.")
   }
 }
 if (!file.exists(criteria_path)) {
-  criteria_path <- resolveEventDataPath("event_criteria.template.csv", data_dir)
+  criteria_path <- eventCriteriaTemplatePath(data_dir)
 }
 
 if (file.exists(resolveIndicatorExcelPath("CPI.xlsx", data_dir)) ||
@@ -36,20 +36,20 @@ if (file.exists(resolveIndicatorExcelPath("CPI.xlsx", data_dir)) ||
     message("Prepared indicators: ", paste(basename(prep$written), collapse = ", "))
   }
 }
-countries_path <- resolveEventDataPath("countries.csv", data_dir)
-output_events <- resolveEventDataPath("events_computed.csv", data_dir)
-output_links <- eventCountriesComputedLayerPath(data_dir)
-output_tags <- eventTagsComputedLayerPath(data_dir)
-output_manifest <- eventsComputedManifestPath(data_dir)
+countries_path <- countriesDataPath(data_dir)
+output_events <- eventsComputedWritePath(data_dir)
+output_links <- generatedEventFileWritePath(DATA_FILE_EVENT_COUNTRIES_COMPUTED, data_dir)
+output_tags <- generatedEventFileWritePath(DATA_FILE_EVENT_TAGS_COMPUTED, data_dir)
+output_manifest <- generatedEventFileWritePath(DATA_FILE_EVENTS_COMPUTED_MANIFEST, data_dir)
 
 if (!file.exists(criteria_path)) {
-  stop("Missing event_criteria.csv (or template) in data/config/ or data/.")
+  stop("Missing ", DATA_FILE_EVENT_CRITERIA, " (or ", TEMPLATE_EVENT_CRITERIA, ") in data/config/ or data/.")
 }
 if (!dir.exists(indicators_dir)) {
   stop("Missing generated indicators directory with indicator CSV files.")
 }
 if (!file.exists(countries_path)) {
-  stop("Missing data/countries.csv.")
+  stop("Missing ", DATA_FILE_COUNTRIES, ".")
 }
 
 criteria <- loadEventCriteria(criteria_path)

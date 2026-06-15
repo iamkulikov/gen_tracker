@@ -1,6 +1,7 @@
 test_that("loadCountryDictionary reads iso2 from countries.csv", {
-  countries_path <- file.path(testthat::test_path("..", "..", "data", "countries.csv"))
-  skip_if_not(file.exists(countries_path), "local countries.csv not available")
+  data_dir <- testthat::test_path("..", "..", "data")
+  countries_path <- countriesDataPath(data_dir = data_dir)
+  skip_if_not(file.exists(countries_path), "local 0_countries.csv not available")
 
   countries <- loadCountryDictionary(countries_path)
   expect_true("iso2" %in% names(countries))

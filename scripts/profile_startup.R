@@ -119,11 +119,11 @@ timeStep <- function(label, expr, env = parent.frame()) {
 
 bootstrapAppDataTimed <- function() {
   population_paths <- resolvePopulationPaths()
-  events_path <- resolveOptionalPath("GEN_TRACKER_EVENTS_PATH", file.path("data", "events.csv"))
-  countries_path <- resolveOptionalPath("GEN_TRACKER_COUNTRIES_PATH", file.path("data", "countries.csv"))
+  events_path <- resolveOptionalPath("GEN_TRACKER_EVENTS_PATH", eventsDataPath())
+  countries_path <- resolveOptionalPath("GEN_TRACKER_COUNTRIES_PATH", countriesDataPath())
   event_countries_path <- resolveOptionalPath(
     "GEN_TRACKER_EVENT_COUNTRIES_PATH",
-    file.path("data", "event_countries.csv")
+    eventCountriesDeployPath()
   )
 
   missing <- c()

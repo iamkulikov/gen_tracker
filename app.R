@@ -24,11 +24,11 @@ resolveOptionalPath <- function(env_name, fallback_path) {
 
 bootstrapAppData <- function() {
   population_paths <- resolvePopulationPaths()
-  events_path <- resolveOptionalPath("GEN_TRACKER_EVENTS_PATH", file.path("data", "events.csv"))
-  countries_path <- resolveOptionalPath("GEN_TRACKER_COUNTRIES_PATH", file.path("data", "countries.csv"))
+  events_path <- resolveOptionalPath("GEN_TRACKER_EVENTS_PATH", eventsDataPath())
+  countries_path <- resolveOptionalPath("GEN_TRACKER_COUNTRIES_PATH", countriesDataPath())
   event_countries_path <- resolveOptionalPath(
     "GEN_TRACKER_EVENT_COUNTRIES_PATH",
-    file.path("data", "event_countries.csv")
+    eventCountriesDeployPath()
   )
 
   missing <- c()
@@ -103,6 +103,7 @@ bootstrapAppData <- function() {
   }
 
   year_bounds <- populationYearBounds(population)
+  events <- appendYearMarkerEvents(events, year_bounds)
 
   list(
     population = population,
@@ -133,7 +134,7 @@ metricInputChoices <- function() {
   c(
     "Population count" = "count",
     "Share of population" = "share_total_population",
-    "Share of working-age population" = "share_working_age_population"
+    "Share of WAP" = "share_working_age_population"
   )
 }
 

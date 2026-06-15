@@ -198,7 +198,7 @@ writePreparedPopulationManifest <- function(manifest, path = preparedPopulationM
 
 buildPreparedPopulation <- function(
   data_dir = Sys.getenv("GEN_TRACKER_DATA_DIR", unset = "data"),
-  countries_path = file.path(data_dir, "countries.csv"),
+  countries_path = countriesDataPath(data_dir),
   output_path = preparedPopulationPath(data_dir),
   compress = "gzip"
 ) {

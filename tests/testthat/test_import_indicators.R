@@ -47,12 +47,31 @@ test_that("importDefaultsExplicitFromExcel reads explicit sheet when Defaults_DB
     skip("Defaults_DB.xlsx not available under data/")
   }
   countries <- readr::read_csv(
-    resolveEventDataPath("countries.csv", data_dir = data_dir),
+    countriesDataPath(data_dir = data_dir),
     show_col_types = FALSE
   )
   defaults <- importDefaultsExplicitFromExcel(path, countries = countries)
   expect_gt(sum(defaults$flag == 1L), 0)
   expect_no_error(validateIndicators(defaults, indicator_name = "sovereign_defaults"))
+})
+
+test_that("loadIndicatorsDirectory strips 5_ prefix from indicator keys", {
+  tmp <- tempfile("gt_ind_")
+  dir.create(tmp)
+  on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
+  readr::write_csv(
+    tibble::tibble(
+      country_id = "RUS",
+      year = 2000L,
+      value = 1,
+      source = "test",
+      source_version = "v1"
+    ),
+    file.path(tmp, indicatorCsvFilename("cpi_inflation"))
+  )
+  loaded <- loadIndicatorsDirectory(tmp)
+  expect_true("cpi_inflation" %in% names(loaded))
+  expect_false("5_cpi_inflation" %in% names(loaded))
 })
 
 test_that("relative_increase operator detects FX weakening", {

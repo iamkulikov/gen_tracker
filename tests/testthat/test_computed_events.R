@@ -55,8 +55,8 @@ test_that("assertNoEventIdCollisions rejects manual CMP prefix", {
 test_that("loadEventsUniverse merges manual and computed without overlap", {
   tmp <- tempfile("gt_events_")
   dir.create(tmp)
-  manual_path <- file.path(tmp, "events.csv")
-  computed_path <- file.path(tmp, "events_computed.csv")
+  manual_path <- file.path(tmp, DATA_FILE_EVENTS)
+  computed_path <- file.path(tmp, DATA_FILE_EVENTS_COMPUTED)
 
   manual <- buildTestEvents()
   readr::write_csv(manual, manual_path)

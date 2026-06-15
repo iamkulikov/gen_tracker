@@ -387,7 +387,7 @@ prepareIndicatorsFromExcel <- function(
   defaults_db_path = NULL,
   indicators_dir = NULL
 ) {
-  countries_path <- countries_path %||% resolveEventDataPath("countries.csv", data_dir = data_dir)
+  countries_path <- countries_path %||% countriesDataPath(data_dir = data_dir)
   cpi_path <- cpi_path %||% resolveIndicatorExcelPath("CPI.xlsx", data_dir = data_dir)
   er_path <- er_path %||% resolveIndicatorExcelPath("ER.xlsx", data_dir = data_dir)
   defaults_db_path <- defaults_db_path %||% resolveIndicatorExcelPath("Defaults_DB.xlsx", data_dir = data_dir)
@@ -403,7 +403,7 @@ prepareIndicatorsFromExcel <- function(
   if (file.exists(cpi_path)) {
     cpi <- importCpiFromWdiExcel(cpi_path, countries = countries)
     validateIndicators(cpi, indicator_name = "cpi_inflation")
-    out_path <- file.path(indicators_dir, "cpi_inflation.csv")
+    out_path <- file.path(indicators_dir, indicatorCsvFilename("cpi_inflation"))
     writeIndicatorCsv(cpi, out_path)
     written <- c(written, out_path)
   }
@@ -411,7 +411,7 @@ prepareIndicatorsFromExcel <- function(
   if (file.exists(er_path)) {
     er <- importErFromExcel(er_path, countries = countries)
     validateIndicators(er, indicator_name = "exchange_rate")
-    out_path <- file.path(indicators_dir, "exchange_rate.csv")
+    out_path <- file.path(indicators_dir, indicatorCsvFilename("exchange_rate"))
     writeIndicatorCsv(er, out_path)
     written <- c(written, out_path)
   }
@@ -419,7 +419,7 @@ prepareIndicatorsFromExcel <- function(
   if (file.exists(defaults_db_path)) {
     defaults <- importDefaultsExplicitFromExcel(defaults_db_path, countries = countries)
     validateIndicators(defaults, indicator_name = "sovereign_defaults")
-    out_path <- file.path(indicators_dir, "sovereign_defaults.csv")
+    out_path <- file.path(indicators_dir, indicatorCsvFilename("sovereign_defaults"))
     writeIndicatorCsv(defaults, out_path)
     written <- c(written, out_path)
   }

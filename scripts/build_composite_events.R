@@ -12,44 +12,43 @@ setwd(resolveProjectRoot())
 loadProjectSources()
 
 data_dir <- Sys.getenv("GEN_TRACKER_DATA_DIR", unset = "data")
-classifiers_path <- resolveConfigPath("composite_classifiers.csv", data_dir)
-countries_path <- resolveEventDataPath("countries.csv", data_dir)
-manual_events_path <- resolveEventDataPath("events.csv", data_dir)
-manual_links_path <- eventCountriesManualLayerPath(data_dir)
+classifiers_path <- compositeClassifiersPath(data_dir)
+countries_path <- countriesDataPath(data_dir)
+manual_events_path <- eventsDataPath(data_dir)
 
-output_composites <- resolveEventDataPath("composite_events.csv", data_dir)
-output_members <- resolveEventDataPath("composite_members.csv", data_dir)
-output_links <- eventCountriesCompositeLayerPath(data_dir)
-output_manifest <- compositeEventsManifestPath(data_dir)
+output_composites <- compositeEventsWritePath(data_dir)
+output_members <- compositeMembersWritePath(data_dir)
+output_links <- generatedEventFileWritePath(DATA_FILE_EVENT_COUNTRIES_COMPOSITE, data_dir)
+output_manifest <- generatedEventFileWritePath(DATA_FILE_COMPOSITE_EVENTS_MANIFEST, data_dir)
 
 if (!file.exists(classifiers_path)) {
-  template_path <- resolveEventDataPath("composite_classifiers.template.csv", data_dir)
+  template_path <- compositeClassifiersTemplatePath(data_dir)
   if (file.exists(template_path)) {
     dir.create(dataConfigDir(data_dir), recursive = TRUE, showWarnings = FALSE)
-    config_copy <- file.path(dataConfigDir(data_dir), "composite_classifiers.csv")
-    file.copy(template_path, config_copy)
+    config_copy <- file.path(dataConfigDir(data_dir), DATA_FILE_COMPOSITE_CLASSIFIERS)
+    file.copy(template_path, config_copy, overwrite = TRUE)
     classifiers_path <- config_copy
     message("Created ", classifiers_path, " from template.")
   } else {
     stop(
       "Missing ",
       classifiers_path,
-      ". Copy data/composite_classifiers.template.csv or add classifier_spec rows.",
+      ". Copy ", TEMPLATE_COMPOSITE_CLASSIFIERS, " or add classifier_spec rows.",
       call. = FALSE
     )
   }
 }
 if (!file.exists(manual_events_path)) {
-  stop("Missing data/events.csv.")
+  stop("Missing ", DATA_FILE_EVENTS, ".")
 }
 
 classifiers <- readr::read_csv(classifiers_path, show_col_types = FALSE)
-criteria <- loadEventCriteria(resolveConfigPath("event_criteria.csv", data_dir))
+criteria <- loadEventCriteria(eventCriteriaPath(data_dir))
 if (nrow(criteria) == 0L) {
-  criteria <- loadEventCriteria(resolveEventDataPath("event_criteria.template.csv", data_dir))
+  criteria <- loadEventCriteria(eventCriteriaTemplatePath(data_dir))
 }
 if (!"classifier_spec" %in% names(classifiers)) {
-  stop("composite_classifiers.csv must contain classifier_spec.")
+  stop(DATA_FILE_COMPOSITE_CLASSIFIERS, " must contain classifier_spec.")
 }
 
 universe <- loadEventsUniverse(manual_path = manual_events_path, data_dir = data_dir)
@@ -57,7 +56,7 @@ events <- universe$elementary_events
 countries <- if (file.exists(countries_path)) loadCountryDictionary(countries_path) else NULL
 
 event_countries <- loadEventCountriesUniverse(
-  manual_path = resolveEventDataPath("event_countries.csv", data_dir),
+  manual_path = eventCountriesDeployPath(data_dir),
   data_dir = data_dir
 )
 

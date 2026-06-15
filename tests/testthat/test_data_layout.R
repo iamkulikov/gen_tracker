@@ -36,8 +36,8 @@ test_that("mergeDeployEventLinks writes deploy file with origin column", {
     "CMP_FX_RUS_1998", "RUS", "affected"
   )
 
-  writeEventCountryLayer(manual, eventCountriesManualLayerPath(tmp))
-  writeEventCountryLayer(computed, eventCountriesComputedLayerPath(tmp))
+  writeEventCountryLayer(manual, eventCountriesManualLayerWritePath(tmp))
+  writeEventCountryLayer(computed, generatedEventFileWritePath(DATA_FILE_EVENT_COUNTRIES_COMPUTED, tmp))
 
   result <- mergeDeployEventLinks(data_dir = tmp)
   expect_true(file.exists(result$deploy_path))
@@ -46,7 +46,7 @@ test_that("mergeDeployEventLinks writes deploy file with origin column", {
   expect_equal(nrow(on_disk), 2)
 
   loaded <- loadEventCountriesUniverse(
-    manual_path = resolveEventDataPath("event_countries.csv", tmp),
+    manual_path = eventCountriesDeployPath(tmp),
     data_dir = tmp
   )
   expect_false("origin" %in% names(loaded))
@@ -61,8 +61,8 @@ test_that("loadEventTagsUniverse reads merged deploy tags", {
   manual <- tibble::tribble(~event_id, ~tag, "AFG_WAR", "war")
   computed <- tibble::tribble(~event_id, ~tag, "CMP_FX_RUS_1998", "fx_crisis")
 
-  writeEventTagLayer(manual, eventTagsManualLayerPath(tmp))
-  writeEventTagLayer(computed, eventTagsComputedLayerPath(tmp))
+  writeEventTagLayer(manual, generatedEventFileWritePath(DATA_FILE_EVENT_TAGS_MANUAL_LAYER, tmp))
+  writeEventTagLayer(computed, generatedEventFileWritePath(DATA_FILE_EVENT_TAGS_COMPUTED, tmp))
   mergeDeployEventTags(data_dir = tmp)
 
   tags <- loadEventTagsUniverse(data_dir = tmp)

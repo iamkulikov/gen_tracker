@@ -5,7 +5,7 @@ test_that("importDefaultsExplicitFromExcel maps ISO2 codes and flag defaults", {
     skip("Defaults_DB.xlsx not available under data/")
   }
   countries <- readr::read_csv(
-    resolveEventDataPath("countries.csv", data_dir = data_dir),
+    countriesDataPath(data_dir = data_dir),
     show_col_types = FALSE
   )
 

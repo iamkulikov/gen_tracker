@@ -17,6 +17,85 @@ resolveQueryBuilderCountryId <- function(selected, countries, preferred = "RUS")
   queryBuilderDefaultCountryId(countries, preferred = preferred)
 }
 
+lookupQueryBuilderEvent <- function(events_df, event_id) {
+  if (
+    is.null(event_id) ||
+      length(event_id) != 1L ||
+      is.na(event_id) ||
+      !nzchar(event_id) ||
+      is.null(events_df) ||
+      nrow(events_df) == 0
+  ) {
+    return(NULL)
+  }
+
+  event_row <- events_df |>
+    dplyr::filter(.data$event_id == .env$event_id) |>
+    dplyr::slice(1)
+  if (nrow(event_row) == 0) {
+    return(NULL)
+  }
+  event_row
+}
+
+queryBuilderEventInfoUi <- function(event_row) {
+  if (is.null(event_row) || nrow(event_row) == 0) {
+    return(NULL)
+  }
+
+  short_desc <- NA_character_
+  source_url <- NA_character_
+  if ("short_description" %in% names(event_row)) {
+    short_desc <- event_row$short_description[[1]] %||% NA_character_
+  }
+  if ("source_url" %in% names(event_row)) {
+    source_url <- event_row$source_url[[1]] %||% NA_character_
+  }
+
+  has_desc <- !is.na(short_desc) && nzchar(trimws(short_desc))
+  has_source <- !is.na(source_url) && nzchar(trimws(source_url))
+  if (!has_desc && !has_source) {
+    return(NULL)
+  }
+
+  popover_children <- list()
+  if (has_desc) {
+    popover_children <- c(popover_children, list(
+      htmltools::tags$p(class = "query-event-info-desc", short_desc)
+    ))
+  }
+  if (has_source) {
+    popover_children <- c(popover_children, list(
+      htmltools::tags$p(
+        class = "query-event-info-meta",
+        htmltools::tags$a(
+          class = "query-event-info-link",
+          href = source_url,
+          target = "_blank",
+          rel = "noopener noreferrer",
+          "Source"
+        )
+      )
+    ))
+  }
+
+  htmltools::tags$span(
+    class = "query-event-info",
+    htmltools::tags$span(
+      class = "query-event-info-trigger",
+      tabindex = "0",
+      role = "button",
+      `aria-label` = "Event details",
+      shiny::icon("info-circle")
+    ),
+    htmltools::tags$span(
+      class = "query-event-info-popover",
+      role = "tooltip",
+      popover_children
+    )
+  )
+}
+
 queryBuilderInlineSelectInput <- function(
   inputId,
   choices,
@@ -49,22 +128,34 @@ queryBuilderEventSelectInput <- function(
     ))
   }
 
-  is_primary <- eventPrimaryFlagsForCountry(
-    events = events_df,
+  groups <- partitionEventPickerIndices(
+    events_df = events_df,
     country_id = country_id,
     event_countries = event_countries
   )
 
-  build_option <- function(i) {
-    label <- formatEventChoiceLabel(
+  build_option <- function(i, group) {
+    label <- formatEventPickerOptionLabel(
       event_name = events_df$event_name[[i]],
       start_year = events_df$start_year[[i]],
-      end_year = events_df$end_year[[i]]
+      end_year = events_df$end_year[[i]],
+      event_id = events_df$event_id[[i]],
+      group = group
     )
+    title_attr <- NULL
+    if ("short_description" %in% names(events_df)) {
+      desc <- events_df$short_description[[i]]
+      if (!is.na(desc) && nzchar(desc)) {
+        title_attr <- desc
+      }
+    }
+
+    is_primary <- group == "primary"
     opt <- htmltools::tags$option(
       value = events_df$event_id[[i]],
       label,
-      style = if (is_primary[[i]]) "font-weight:700" else NULL
+      title = title_attr,
+      style = if (is_primary) "font-weight:700" else NULL
     )
     if (!is.null(selected) && identical(events_df$event_id[[i]], selected)) {
       opt <- htmltools::tagAppendAttributes(opt, selected = "selected")
@@ -72,52 +163,32 @@ queryBuilderEventSelectInput <- function(
     opt
   }
 
-  is_global <- events_df$event_scope == "global"
+  build_group <- function(label, indices, group) {
+    if (length(indices) == 0L) {
+      return(NULL)
+    }
+    do.call(
+      htmltools::tags$optgroup,
+      c(
+        list(label = label),
+        lapply(indices, build_option, group = group)
+      )
+    )
+  }
 
-  primary_idx <- which(is_primary)
-  global_idx <- which(!is_primary & is_global)
-  other_idx <- which(!is_primary & !is_global)
   country_label <- country_name %||% country_id
+  children <- list(
+    build_group(sprintf("Events for %s", country_label), groups$primary, "primary"),
+    build_group("Global events", groups$global, "global"),
+    build_group("Other events", groups$other, "other"),
+    build_group("Years", groups$years, "years")
+  )
+  children <- children[!vapply(children, is.null, logical(1))]
 
-  children <- list()
-  if (length(primary_idx) > 0) {
-    children <- c(
-      children,
-      list(do.call(
-        htmltools::tags$optgroup,
-        c(
-          list(label = sprintf("Events for %s", country_label)),
-          lapply(primary_idx, build_option)
-        )
-      ))
-    )
-  }
-  if (length(global_idx) > 0) {
-    children <- c(
-      children,
-      list(do.call(
-        htmltools::tags$optgroup,
-        c(
-          list(label = "Global events"),
-          lapply(global_idx, build_option)
-        )
-      ))
-    )
-  }
-  if (length(other_idx) > 0) {
-    children <- c(
-      children,
-      list(do.call(
-        htmltools::tags$optgroup,
-        c(
-          list(label = "Other events"),
-          lapply(other_idx, build_option)
-        )
-      ))
-    )
-  }
   if (length(children) == 0) {
-    children <- lapply(seq_len(nrow(events_df)), build_option)
+    children <- lapply(seq_len(nrow(events_df)), function(i) {
+      build_option(i, "primary")
+    })
   }
 
   do.call(
@@ -166,7 +237,11 @@ queryBuilderUi <- function(id, line_color = NULL) {
           choices = queryBuilderEventModeChoices(),
           selected = "start"
         )),
-        shiny::span(class = "query-chunk query-chunk-event", shiny::uiOutput(ns("event_ui"), inline = TRUE)),
+        shiny::span(
+          class = "query-chunk-event-row",
+          shiny::span(class = "query-chunk query-chunk-event", shiny::uiOutput(ns("event_ui"), inline = TRUE)),
+          shiny::uiOutput(ns("event_info_ui"), inline = TRUE)
+        ),
         shiny::span(class = "query-plain query-sentence-end", ".")
       ),
       shiny::uiOutput(ns("validity_ui"))

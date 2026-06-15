@@ -171,15 +171,22 @@ sortEventsForCountry <- function(events, country_id, event_countries = NULL) {
 
   primary <- eventPrimaryFlagsForCountry(events, country_id, event_countries)
   tier <- ifelse(primary, 1L, ifelse(events$event_scope == "global", 2L, 3L))
+  is_composite <- !is.na(events$event_origin) & events$event_origin == "composite"
+  composite_rank <- ifelse(is_composite, 0L, 1L)
 
   events |>
-    dplyr::mutate(.tier = tier) |>
+    dplyr::mutate(
+      .tier = tier,
+      .composite_rank = composite_rank
+    ) |>
     dplyr::arrange(
       .data$.tier,
+      .data$.composite_rank,
       dplyr::desc(.data$start_year),
-      .data$event_name
+      .data$event_name,
+      .data$event_id
     ) |>
-    dplyr::select(-".tier")
+    dplyr::select(-c(".tier", ".composite_rank"))
 }
 
 filterCompatibleEvents <- function(events, country_id, event_countries = NULL) {

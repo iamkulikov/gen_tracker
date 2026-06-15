@@ -21,7 +21,7 @@ locateGenTrackerRoot <- function() {
 }
 
 root <- locateGenTrackerRoot()
-countries_path <- file.path(root, "data", "countries.csv")
+countries_path <- countriesDataPath(root)
 crosswalk_path <- file.path(root, "data", "iso3166_alpha_crosswalk.csv")
 
 if (!file.exists(countries_path)) {

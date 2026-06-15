@@ -14,6 +14,17 @@ classifierTagSlug <- function(tag) {
   toupper(slug)
 }
 
+formatCompositeEpisodeCount <- function(n) {
+  n <- as.integer(n)
+  if (length(n) != 1L || is.na(n)) {
+    return("0 episodes")
+  }
+  if (n == 1L) {
+    return("1 episode")
+  }
+  sprintf("%d episodes", n)
+}
+
 compositeEventId <- function(tag, country_id) {
   sprintf("MERGE_%s_%s", classifierTagSlug(tag), country_id)
 }
@@ -102,21 +113,12 @@ buildCompositeEventsFromTags <- function(
     if (!nzchar(composite_label)) {
       composite_label <- tag_label
     }
-    if (!is.null(composite_name) && nzchar(trimws(as.character(composite_name)))) {
-      event_name <- sprintf(
-        "%s в %s (%d эпизодов)",
-        composite_label,
-        country_label,
-        nrow(group_members)
-      )
-    } else {
-      event_name <- sprintf(
-        "%s in %s (%d episodes)",
-        composite_label,
-        country_label,
-        nrow(group_members)
-      )
-    }
+    event_name <- sprintf(
+      "%s in %s (%s)",
+      composite_label,
+      country_label,
+      formatCompositeEpisodeCount(nrow(group_members))
+    )
 
     composite_headers[[length(composite_headers) + 1L]] <- tibble::tibble(
       composite_event_id = composite_id,

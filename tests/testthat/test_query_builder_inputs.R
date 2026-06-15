@@ -76,3 +76,58 @@ test_that("resolveQueryBuilderCountryId falls back when country input is empty",
   expect_equal(resolveQueryBuilderCountryId(character(0), countries), "RUS")
   expect_equal(resolveQueryBuilderCountryId("USA", countries), "USA")
 })
+
+test_that("lookupQueryBuilderEvent returns the matching catalog row", {
+  events <- buildTestEvents() |>
+    dplyr::mutate(
+      short_description = dplyr::case_when(
+        .data$event_id == "AFG_WAR" ~ "Soviet intervention in Afghanistan.",
+        .default = NA_character_
+      ),
+      source_url = dplyr::case_when(
+        .data$event_id == "AFG_WAR" ~ "https://en.wikipedia.org/wiki/Soviet%E2%80%93Afghan_War",
+        .default = NA_character_
+      )
+    )
+
+  row <- lookupQueryBuilderEvent(events, "AFG_WAR")
+  expect_equal(row$event_id[[1]], "AFG_WAR")
+  expect_equal(row$short_description[[1]], "Soviet intervention in Afghanistan.")
+  expect_null(lookupQueryBuilderEvent(events, "MISSING"))
+  expect_null(lookupQueryBuilderEvent(events, NULL))
+})
+
+test_that("queryBuilderEventInfoUi renders icon tooltip with description and source", {
+  event_row <- buildTestEvents() |>
+    dplyr::filter(.data$event_id == "AFG_WAR") |>
+    dplyr::mutate(
+      short_description = "A short event summary.",
+      source_url = "https://example.org/source"
+    )
+  ui <- queryBuilderEventInfoUi(event_row)
+  html <- as.character(ui)
+  expect_match(html, "query-event-info-trigger")
+  expect_match(html, "query-event-info-popover")
+  expect_match(html, "A short event summary\\.")
+  expect_match(html, "query-event-info-link")
+  expect_match(html, "https://example.org/source")
+})
+
+test_that("queryBuilderEventInfoUi hides when metadata is missing", {
+  event_row <- buildTestEvents() |> dplyr::slice(1)
+  expect_null(queryBuilderEventInfoUi(event_row))
+  expect_null(queryBuilderEventInfoUi(NULL))
+})
+
+test_that("queryBuilderEventInfoUi can render source-only metadata", {
+  event_row <- buildTestEvents() |>
+    dplyr::filter(.data$event_id == "AFG_WAR") |>
+    dplyr::mutate(
+      short_description = NA_character_,
+      source_url = "https://example.org/source-only"
+    )
+  ui <- queryBuilderEventInfoUi(event_row)
+  html <- as.character(ui)
+  expect_match(html, "query-event-info-link")
+  expect_false(grepl("query-event-info-desc", html))
+})

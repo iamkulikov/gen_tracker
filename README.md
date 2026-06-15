@@ -57,8 +57,8 @@ Internally the app encodes it as a reproducible **recipe** — country, sex, age
 Place the source data in `data/`, build the prepared artifacts once, then run the app:
 
 ``` bash
-Rscript scripts/build_prepared_population.R   # build data/population.rds from WPP Excel + countries.csv
-Rscript scripts/build_event_countries.R       # link events to countries
+Rscript scripts/build_prepared_population.R   # build data/population.rds from WPP Excel + 0_countries.csv
+Rscript scripts/build_event_countries.R       # link events to countries (9_event_countries.csv)
 ```
 
 ``` r

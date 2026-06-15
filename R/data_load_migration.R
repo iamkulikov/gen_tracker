@@ -223,7 +223,7 @@ writePreparedMigrationManifest <- function(manifest, path = preparedMigrationMan
 
 buildPreparedMigration <- function(
   data_dir = Sys.getenv("GEN_TRACKER_DATA_DIR", unset = "data"),
-  countries_path = file.path(data_dir, "countries.csv"),
+  countries_path = countriesDataPath(data_dir),
   source_path = NULL,
   output_path = preparedMigrationPath(data_dir),
   compress = "gzip"
